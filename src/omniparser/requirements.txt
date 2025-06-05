@@ -1,0 +1,28 @@
+torch --index-url https://download.pytorch.org/whl/cu128
+torchvision --index-url https://download.pytorch.org/whl/cu128
+easyocr
+supervision==0.18.0
+transformers==4.51.3
+ultralytics==8.3.70
+numpy==1.26.4
+opencv-python
+opencv-python-headless
+dill
+accelerate
+timm
+einops==0.8.0
+paddlepaddle
+paddleocr
+ruff==0.6.7
+pre-commit==3.8.0
+pytest==8.3.3
+pytest-asyncio==0.23.6
+pyautogui==0.9.54
+jsonschema==4.22.0
+screeninfo
+uiautomation
+dashscope
+groq
+python-dotenv
+uvicorn
+fastapi
