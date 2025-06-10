@@ -7,8 +7,8 @@ ENV CAPTION_MODEL_NAME=florence2
 ENV CAPTION_MODEL_PATH=weights/icon_caption_florence
 ENV DEVICE=cuda
 ENV BOX_THRESHOLD=0.05
-ENV HOST=0.0.0.0
-ENV PORT=8000
+ENV OMNIPARSER_HOST=localhost
+ENV OMNIPARSER_PORT=8081
 
 # Install dependencies and add deadsnakes PPA for Python 3.12
 RUN apt-get update && apt-get install -y \
@@ -42,8 +42,11 @@ RUN pip install -r requirements.txt
 
 RUN chmod +x setup_weights.sh && ./setup_weights.sh
 
-ARG PORT=8000
+ARG PORT=8081
+ARG OMNIPARSER_HOST=${OMNIPARSER_HOST}
+ARG OMNIPARSER_PORT=${OMNIPARSER_PORT}
+
 
 EXPOSE ${PORT}
 
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "server:app", "--host", "localhost", "--port", "8081"]

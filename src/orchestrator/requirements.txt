@@ -1,0 +1,7 @@
+semantic-kernel
+fastapi
+uvicorn
+pydantic
+azure-storage-blob
+psycopg2-binary
+# mcp

@@ -2,17 +2,24 @@
 This script tests the Florence API by sending a base64 encoded image
 and receiving parsed content, specifically looking for unique icons in the response.
 """
+import os
 import base64
 import requests
 import time
-
+from dotenv import load_dotenv
+load_dotenv()
 
 def test_run(num_of_testing: int = 10):
     """
     With NVIDIA GeForece RTX 4050 Laptop GPU, this might take around 22 seconds
     """
     image_path = "images\\demo_video_582025_0000000000.jpg"
-    florence_url = "http://localhost:8000/parse/"
+    host = os.getenv("OMNIPARSER_HOST", "localhost")
+    port = os.getenv("OMNIPARSER_PORT", "8081")
+    florence_url = f"http://{host}:{port}/parse/"
+    print("="*66)
+    print(f"Florence API URL: {florence_url}")
+    print("="*66)
 
     with open(image_path, "rb") as image_file:
         base64_image = base64.b64encode(image_file.read()).decode("utf-8")

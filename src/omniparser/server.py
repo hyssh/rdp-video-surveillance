@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv 
 import uvicorn
 from util.omniparser import Omniparser
+import asyncio
 # # logging 
 # import logging
 # logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -24,8 +25,8 @@ config = {
     'caption_model_path': os.getenv('CAPTION_MODEL_PATH', 'weights/icon_caption_florence'),
     'device': os.getenv('DEVICE', 'cuda'),
     'BOX_TRESHOLD': float(os.getenv('BOX_THRESHOLD', '0.05')),
-    'host': os.getenv('HOST', '0.0.0.0'),
-    'port': int(os.getenv('PORT', '8000'))
+    'host': os.getenv('OMNIPARSER_HOST', 'localhost'),
+    'port': int(os.getenv('OMNIPARSER_PORT', '8081'))
 }
 
 app = FastAPI()
@@ -64,5 +65,14 @@ async def test_result_iumage():
         image_bytes = base64.b64decode(dino_labled_img)
     return Response(content=image_bytes, media_type="image/png")
 
+
 if __name__ == "__main__":
-    uvicorn.run("server:app", host=config['host'], port=config['port'], reload=True)
+    # Run the async initialization
+    loop = asyncio.get_event_loop()
+    init_success = loop.run_until_complete(test_result_iumage())
+    if not init_success:
+        print("Failed to initialize Omniparser.")
+        sys.exit(1)
+    else:
+        print("Omniparser initialized successfully.")
+        uvicorn.run("server:app", host=config['host'], port=config['port'], reload=True)
