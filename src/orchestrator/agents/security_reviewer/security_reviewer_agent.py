@@ -10,12 +10,15 @@ import logging
 from dotenv import load_dotenv
 from azure.identity.aio import DefaultAzureCredential
 from typing import List, Optional, Union, Tuple, Dict, Any
-from semantic_kernel.agents import AzureAIAgent, AzureAIAgentSettings, AzureAIAgentThread
+from semantic_kernel.agents import ChatCompletionAgent, ChatHistoryAgentThread
+from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion
+from semantic_kernel.agents import AzureAIAgentSettings
+# from semantic_kernel.agents import AzureAIAgent, AzureAIAgentSettings, AzureAIAgentThread
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.text_content import TextContent
 
 # Configure logging
-logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Load environment variables
@@ -40,18 +43,18 @@ class SecurityReviewerService:
             # Use DefaultAzureCredential for managed identity support in production
             self.credential = DefaultAzureCredential()
             
-            # Configure agent settings with appropriate timeout and retry policies
-            settings = AzureAIAgentSettings(
-                endpoint=os.getenv("AZURE_AI_AGENT_ENDPOINT"),
-                model_deployment_name=os.getenv("AZURE_AI_AGENT_CHAT_MODEL_DEPLOYMENT_NAME", "gpt-4.1"),
-                timeout=120,  # Increase timeout for production workloads
-            )
+            # # Configure agent settings with appropriate timeout and retry policies
+            # settings = AzureAIAgentSettings(
+            #     endpoint=os.getenv("AZURE_AI_AGENT_ENDPOINT"),
+            #     model_deployment_name=os.getenv("AZURE_AI_AGENT_REASONING_MODEL_DEPLOYMENT_NAME", "o3"),
+            #     timeout=300,  # Increase timeout for production workloads
+            # )
             
-            # Create client with explicit settings
-            self.client = AzureAIAgent.create_client(
-                credential=self.credential,
-                settings=settings
-            )
+            # # Create client with explicit settings
+            # self.client = AzureAIAgent.create_client(
+            #     credential=self.credential,
+            #     settings=settings
+            # )
             
             # Get or create the agent
             self.agent = await self._get_or_create_agent()
@@ -87,30 +90,37 @@ class SecurityReviewerService:
             logger.error(f"Error loading prompts from {prompt_path}: {str(e)}")
             raise
     
-    async def _get_or_create_agent(self) -> AzureAIAgent:
+    async def _get_or_create_agent(self) -> ChatCompletionAgent:
         """Get existing agent or create a new one"""
         try:
             # Check for existing agent
-            agent_list = self.client.agents.list_agents()
+            # agent_list = self.client.agents.list_agents()
             
-            async for existing_agent in agent_list:
-                if existing_agent.name == "security_reviewer_agent":
-                    agent_definition = await self.client.agents.get_agent(existing_agent.id)
-                    logger.info(f"Found existing agent: {existing_agent.id}")
-                    return AzureAIAgent(client=self.client, definition=agent_definition)
+            # async for existing_agent in agent_list:
+            #     if existing_agent.name == "security_reviewer_agent":
+            #         agent_definition = await self.client.agents.get_agent(existing_agent.id)
+            #         logger.info(f"Found existing agent: {existing_agent.id}")
+            #         return AzureAIAgent(client=self.client, definition=agent_definition)
             
             # If no existing agent found, create a new one
             logger.info("Creating new security reviewer agent")
-            instructions = self.load_prompts()
             
-            agent_definition = await self.client.agents.create_agent(
-                model=os.getenv("AZURE_AI_AGENT_CHAT_MODEL_DEPLOYMENT_NAME", "gpt-4.1"),
-                name="security_reviewer_agent",
-                instructions=instructions,
-                description="Agent that reviews the results from image analyzer output for security review.",
+            # agent_definition = await self.client.agents.create_agent(
+            #     model=os.getenv("AZURE_AI_AGENT_REASONING_MODEL_DEPLOYMENT_NAME", "o3"),
+            #     name="security_reviewer_agent",
+            #     instructions=instructions,
+            #     description="Agent that reviews the results from image analyzer output for security review.",
+            # )
+            
+            # return AzureAIAgent(client=self.client, definition=agent_definition)
+        
+            agent = ChatCompletionAgent(
+                service=AzureChatCompletion(instruction_role="system"),
+                name="security_image_analyzer_agent",
+                instructions=self.load_prompts(),  # Load the prompt from YAML
             )
-            
-            return AzureAIAgent(client=self.client, definition=agent_definition)
+            return agent
+        
         except Exception as e:
             logger.error(f"Error getting or creating agent: {e}")
             raise
@@ -147,7 +157,7 @@ class SecurityReviewerService:
         ]
         
         # Create thread if needed
-        thread = AzureAIAgentThread(thread_id=thread_id, client=self.client) if thread_id else None
+        # thread = AzureAIAgentThread(thread_id=thread_id, client=self.client) if thread_id else None
         
         try:
             # Get response with proper error handling
@@ -184,9 +194,9 @@ async def get_security_reviewer_agent():
     # Initialize and return the agent
     return await _service_instance.initialize()
 
-async def security_reviewer_agent_run(agent: AzureAIAgent, 
+async def security_reviewer_agent_run(agent: ChatCompletionAgent, 
                                     image_analysis_results: Optional[List[Dict[str, Any]]] = None,
-                                    thread: Optional[AzureAIAgentThread] = None, 
+                                    thread: Optional[ChatHistoryAgentThread] = None, 
                                     custom_prompt: Optional[str] = None):
     """
     Run the security reviewer agent with the given parameters.
@@ -203,7 +213,7 @@ async def security_reviewer_agent_run(agent: AzureAIAgent,
     global _service_instance
     
     # Verify agent type with proper error handling
-    if not isinstance(agent, AzureAIAgent):
+    if not isinstance(agent, ChatCompletionAgent):
         raise TypeError(f"agent must be an instance of AzureAIAgent, got {type(agent).__name__}")
     
     if image_analysis_results is not None:

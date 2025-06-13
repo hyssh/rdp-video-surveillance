@@ -10,11 +10,14 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 from dotenv import load_dotenv
 from typing import List, Optional, Union, Tuple, Dict, Any
 from azure.identity.aio import DefaultAzureCredential
-from semantic_kernel.agents import AzureAIAgent, AzureAIAgentSettings, AzureAIAgentThread
+from semantic_kernel.agents import ChatCompletionAgent, ChatHistoryAgentThread
+from semantic_kernel.contents.chat_history import ChatHistory
+from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion
+from pydantic import BaseModel
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.text_content import TextContent
 from semantic_kernel.contents.image_content import ImageContent
-from semantic_kernel.agents import AgentResponseItem
+# from semantic_kernel.agents import AgentResponseItem
 
 # Configure logging
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -158,17 +161,17 @@ class ImageAnalyzerService:
             self.credential = DefaultAzureCredential()
             
             # Configure agent settings with appropriate timeout and retry policies
-            settings = AzureAIAgentSettings(
-                endpoint=os.getenv("AZURE_AI_AGENT_ENDPOINT"),
-                model_deployment_name=os.getenv("AZURE_AI_AGENT_CHAT_MODEL_DEPLOYMENT_NAME", "gpt-4.1"),
-                # timeout=120,  # Increase timeout for production workloads
-            )
+            # settings = AzureAIAgentSettings(
+            #     endpoint=os.getenv("AZURE_AI_AGENT_ENDPOINT"),
+            #     model_deployment_name=os.getenv("AZURE_AI_AGENT_CHAT_MODEL_DEPLOYMENT_NAME", "gpt-4.1"),
+            #     # timeout=120,  # Increase timeout for production workloads
+            # )
             
             # Create client with explicit settings
-            self.client = AzureAIAgent.create_client(
-                credential=self.credential,
-                settings=settings
-            )
+            # self.client = AzureAIAgent.create_client(
+            #     credential=self.credential,
+            #     settings=settings
+            # )
             
             # Get or create the agent
             self.agent = await self._get_or_create_agent()
@@ -181,7 +184,7 @@ class ImageAnalyzerService:
             raise
 
 
-    def load_prompts(self, prompt_path: str="agents/image_analyzer/agent.yml") -> str:
+    def load_prompts(self, prompt_path: str="agents/chat_completion/agent.yml") -> str:
         """
         Load a prompt from a file.
 
@@ -205,40 +208,40 @@ class ImageAnalyzerService:
             logger.error(f"Error loading prompts from {prompt_path}: {str(e)}")
             raise
     
-    async def _get_or_create_agent(self) -> AzureAIAgent:
+    async def _get_or_create_agent(self) -> ChatCompletionAgent:
         """Get existing agent or create a new one"""
         try:
-            # Check for existing agent
-            agent_list = self.client.agents.list_agents()
+            # # Check for existing agent
+            # agent_list = self.client.agents.list_agents()
             
-            async for existing_agent in agent_list:
-                if existing_agent.name == "security_image_analyzer_agent":
-                    agent_definition = await self.client.agents.get_agent(existing_agent.id)
-                    logger.info(f"Found existing agent: {existing_agent.id}")
-                    return AzureAIAgent(client=self.client, definition=agent_definition)
+            # async for existing_agent in agent_list:
+            #     if existing_agent.name == "security_image_analyzer_agent":
+            #         agent_definition = await self.client.agents.get_agent(existing_agent.id)
+            #         logger.info(f"Found existing agent: {existing_agent.id}")
+            #         return AzureAIAgent(client=self.client, definition=agent_definition)
+
+            if self.agent:
+                logger.info("Using existing agent instance")
+                return self.agent
             
-            # If no existing agent found, create a new one
-            logger.info("Creating new security image analyzer agent")
-            instructions = self.load_prompts()
-            
-            agent_definition = await self.client.agents.create_agent(
-                model=os.getenv("AZURE_AI_AGENT_CHAT_MODEL_DEPLOYMENT_NAME", "gpt-4.1"),
+            agent = ChatCompletionAgent(
+                service=AzureChatCompletion(instruction_role="system"),
                 name="security_image_analyzer_agent",
-                instructions=instructions,
-                description="Agent that analyzes Remote Desktop recording and images for suspicious activities, or security threats.",
+                instructions=self.load_prompts(),  # Load the prompt from YAML
             )
-            
-            return AzureAIAgent(client=self.client, definition=agent_definition)
+
+            return agent
+
         except Exception as e:
             logger.error(f"Error getting or creating agent: {e}")
             raise
     
     @with_azure_rate_limit_retry(max_attempts=5)
-    async def analyze_image(self, 
-                           base64_image: str, 
-                           omniparser_response: Dict[str, Any],
-                           thread: Optional[AzureAIAgentThread] = None,
-                           custom_prompt: Optional[str] = None) -> str:
+    async def chat(self, 
+                    base64_image: str, 
+                    omniparser_response: Dict[str, Any],
+                    thread: Optional[ChatHistoryAgentThread] = None,
+                    custom_prompt: Optional[str] = None) -> str:
         """
         Analyze an image using the Azure AI Agent with rate limit handling
         
@@ -255,23 +258,22 @@ class ImageAnalyzerService:
             raise ValueError("Agent not initialized. Call initialize() first.")
         
         # Build the prompt
-        prompt = custom_prompt or "Must describe the given image in terms of IT security point of view. If you do not see an image. Tell me I dont' have an image. Analyze the image for any suspicious activities or security threats."
-        # full_prompt = f"{prompt}\n\nUse the given image data:\nAnd the omniparser response:\n{omniparser_response}"
+        prompt = custom_prompt or "Analyze the image for any suspicious activities or security threats."
+        full_prompt = f"{prompt}\n\nUse the given image data:\nAnd the omniparser response:\n{omniparser_response}"
 
         chat_message_contents = [
             ChatMessageContent(
                 role="user",
                 items=[
-                    ImageContent(data_format="base64", data=base64_image, mime_type="image/jpeg"),
-                    TextContent(text=prompt),
+                    ImageContent(data_format="base64", data=base64_image, mime_type="image/jpeg")
                 ]
             ),
-            # ChatMessageContent(
-            #     role="user",
-            #     items=[
-            #         TextContent(text=full_prompt),
-            #     ]
-            # ),
+            ChatMessageContent(
+                role="user",
+                items=[
+                    TextContent(text=full_prompt),
+                ]
+            ),
         ]
         
         try:
@@ -301,7 +303,7 @@ class ImageAnalyzerService:
         except Exception as e:
             logger.error(f"Error closing credential: {e}")
 
-async def get_image_analyzer_agent():
+async def get_chat_completion_agent():
     """
     Create or retrieve an Azure AI Agent for image analysis.
     
@@ -318,8 +320,8 @@ async def get_image_analyzer_agent():
     return await _service_instance.initialize()
 
 @with_azure_rate_limit_retry(max_attempts=3)
-async def image_analyzer_agent_run(agent: AzureAIAgent, 
-                                   thread: Optional[AzureAIAgentThread] = None, 
+async def chat_completion_agent_run(agent: ChatCompletionAgent, 
+                                   thread: Optional[ChatHistoryAgentThread] = None, 
                                    user_input: Optional[str] = None, 
                                    base64_image: str = "IMAGE IS MISSING", 
                                    omniparser_response: set = ("type:Unkown", "interactivity:Unknown","content:Unknown")):
@@ -339,7 +341,7 @@ async def image_analyzer_agent_run(agent: AzureAIAgent,
     global _service_instance
     
     # Verify agent type with proper error handling
-    if not isinstance(agent, AzureAIAgent):
+    if not isinstance(agent, ChatCompletionAgent):
         raise TypeError(f"agent must be an instance of AzureAIAgent, got {type(agent).__name__}")
     
     # Verify service is initialized
@@ -350,7 +352,7 @@ async def image_analyzer_agent_run(agent: AzureAIAgent,
     
     try:
         # Use the service to analyze the image
-        return await _service_instance.analyze_image(
+        return await _service_instance.chat(
             base64_image=base64_image,
             omniparser_response=omniparser_response,
             thread=thread,
@@ -373,49 +375,49 @@ async def image_analyzer_agent_run(agent: AzureAIAgent,
         # Re-raise for proper error propagation
         raise
 
-async def get_or_create_thread_with_backoff(agent: AzureAIAgent, metadata: Dict[str, Any] = None) -> Optional[AzureAIAgentThread]:
-    """
-    Get or create a thread with rate limit handling.
+# async def get_or_create_thread_with_backoff(agent: ChatCompletionAgent,) -> Optional[ChatHistoryAgentThread]:
+#     """
+#     Get or create a thread with rate limit handling.
     
-    Args:
-        agent: The Azure AI Agent instance
-        metadata: Optional metadata for the thread
+#     Args:
+#         agent: The Azure AI Agent instance
+#         metadata: Optional metadata for the thread
         
-    Returns:
-        The thread or None if creation fails
-    """
-    global _rate_limit_tracker
+#     Returns:
+#         The thread or None if creation fails
+#     """
+#     global _rate_limit_tracker
     
-    # Check if we're in a backoff period
-    if _rate_limit_tracker.should_throttle():
-        wait_time = _rate_limit_tracker.get_wait_time()
-        logger.info(f"Rate limiting active, waiting {wait_time:.2f} seconds before creating thread")
-        await asyncio.sleep(wait_time)
+#     # Check if we're in a backoff period
+#     if _rate_limit_tracker.should_throttle():
+#         wait_time = _rate_limit_tracker.get_wait_time()
+#         logger.info(f"Rate limiting active, waiting {wait_time:.2f} seconds before creating thread")
+#         await asyncio.sleep(wait_time)
     
-    try:
-        # Try to create the thread
-        properties = {}
-        if metadata:
-            properties["metadata"] = metadata
+#     # try:
+#         # Try to create the thread
+#         # properties = {}
+#         # if metadata:
+#         #     properties["metadata"] = metadata
             
-        thread_response = await agent.client.agents.create_thread(properties=properties)
-        logger.info(f"Created new thread: {thread_response.id}")
+#         # thread_response = await agent#client.agents.create_thread(properties=properties)
+#         # logger.info(f"Created new thread: {thread_response.id}")
         
-        # Reset rate limit tracking on success
-        _rate_limit_tracker.reset()
+#         # # Reset rate limit tracking on success
+#         # _rate_limit_tracker.reset()
         
-        return AzureAIAgentThread(thread_id=thread_response.id, client=agent.client)
-    except Exception as e:
-        is_rate_limit, retry_after = is_rate_limit_error(e)
-        if is_rate_limit:
-            # Record the rate limit and log
-            backoff_seconds = _rate_limit_tracker.record_rate_limit(retry_after)
-            logger.warning(f"Rate limit hit when creating thread. Backing off for {backoff_seconds} seconds.")
-            # Try again with backoff if needed
-            return None
-        else:
-            logger.error(f"Error creating thread: {e}")
-            return None
+#         # return AzureAIAgentThread(thread_id=thread_response.id, client=agent.client)
+#     # except Exception as e:
+#     #     is_rate_limit, retry_after = is_rate_limit_error(e)
+#     #     if is_rate_limit:
+#     #         # Record the rate limit and log
+#     #         backoff_seconds = _rate_limit_tracker.record_rate_limit(retry_after)
+#     #         logger.warning(f"Rate limit hit when creating thread. Backing off for {backoff_seconds} seconds.")
+#     #         # Try again with backoff if needed
+#     #         return None
+#     #     else:
+#     #         logger.error(f"Error creating thread: {e}")
+#     #         return None
 
 async def cleanup_resources():
     """Clean up all Azure resources properly"""
@@ -428,11 +430,11 @@ async def cleanup_resources():
 if __name__ == "__main__":
     async def main():
         try:
-            agent = await get_image_analyzer_agent()
+            agent = await get_chat_completion_agent()
             logger.info(f"Agent initialized with ID: {agent.id}")
             
             # Test the agent
-            result = await image_analyzer_agent_run(
+            result = await chat_completion_agent_run(
                 agent=agent,
                 user_input="This is a test. Analyze this image for testing purposes.",
                 base64_image="TEST_IMAGE_DATA",

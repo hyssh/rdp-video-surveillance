@@ -1,13 +1,13 @@
 import os
 import logging
 import uuid
-from typing import Optional, Dict, Any
-from semantic_kernel.agents import AzureAIAgent, AzureAIAgentThread
+from typing import Optional, Dict, Any, Union
+from semantic_kernel.agents import AzureAIAgent, AzureAIAgentThread, ChatCompletionAgent,ChatHistoryAgentThread
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from azure.identity import DefaultAzureCredential
 
 # Configure logging with correlation IDs for better Azure Monitor integration
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - [%(correlation_id)s] - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.ERROR, format='%(asctime)s - [%(correlation_id)s] - %(levelname)s - %(message)s')
 
 class ThreadManager:
     """
@@ -21,9 +21,9 @@ class ThreadManager:
         self.azureaiagentthread = None
     
     async def get_or_create_thread(self, 
-                                  agent: AzureAIAgent, 
+                                  agent: Union[AzureAIAgent, ChatCompletionAgent], 
                                   thread_id: Optional[str] = None,
-                                  metadata: Optional[Dict[str, Any]] = None) -> AzureAIAgentThread:
+                                  metadata: Optional[Dict[str, Any]] = None) -> Union[AzureAIAgentThread, ChatHistoryAgentThread]:
         """
         Gets an existing thread or creates a new one with proper Azure error handling.
         
@@ -35,30 +35,37 @@ class ThreadManager:
         Returns:
             azureaiagentthread: The thread instance
         """
-        
-        # Validate agent
-        if not agent or not hasattr(agent, 'client'):
-            logging.error("Invalid agent provided")
-            raise ValueError("A valid Azure AI agent is required")
-            
-        try:
-            # Use provided thread_id if available
-            if self.azureaiagentthread:
-                    return self.azureaiagentthread                
-            
-            logging.info("Creating new Azure AI agent thread")
-            thread_response = await agent.client.agents.threads.create()
-            self.azureaiagentthread = AzureAIAgentThread(thread_id=thread_response.id, client=agent.client)
-            
-            # Cache the thread for future use
-            logging.info(f"Created new thread: {self.azureaiagentthread.id}")
-            
-            return self.azureaiagentthread
+        if isinstance(agent, AzureAIAgent):
+            # Validate agent
+            if not agent or not hasattr(agent, 'client'):
+                logging.error("Invalid agent provided")
+                raise ValueError("A valid Azure AI agent is required")
                 
-        except Exception as e:
-            logging.error(f"Error in thread management: {str(e)}")
-            # Fallback to threadless operation as per Azure resilience patterns
-            raise RuntimeError("Failed to create or retrieve thread")
+            try:
+                # Use provided thread_id if available
+                if self.azureaiagentthread:
+                        return self.azureaiagentthread                
+                
+                logging.info("Creating new Azure AI agent thread")
+                thread_response = await agent.client.agents.threads.create()
+                self.azureaiagentthread = AzureAIAgentThread(thread_id=thread_response.id, client=agent.client)
+                
+                # Cache the thread for future use
+                logging.info(f"Created new thread: {self.azureaiagentthread.id}")
+                
+                return self.azureaiagentthread
+                    
+            except Exception as e:
+                logging.error(f"Error in thread management: {str(e)}")
+                # Fallback to threadless operation as per Azure resilience patterns
+                raise RuntimeError("Failed to create or retrieve thread")
+        elif isinstance(agent, ChatCompletionAgent):
+            # For ChatCompletionAgent, we can create a threadless operation
+            logging.info("Using ChatCompletionAgent without threads")
+            self.azureaiagentthread = ChatHistoryAgentThread()
+            return self.azureaiagentthread
+        else:
+            raise TypeError("Unsupported agent type. Must be AzureAIAgent or ChatCompletionAgent")
             
     async def list_threads(self, agent: AzureAIAgent, limit: int = 10) -> list:
         """

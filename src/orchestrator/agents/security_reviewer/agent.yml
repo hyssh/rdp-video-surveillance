@@ -55,19 +55,19 @@ security_reviewer_prompt: |
       "key_observations" : [
         {
           "frame": 0,
-          "action": "Description of the action",
+          "descriotion": "Description of the action",
           "context": "Context of the action",
           "risk_level": 0-10
         },
         {
           "frame": 3,
-          "action": "Description of the action",
+          "descriotion": "Description of the action",
           "context": "Context of the action",
           "risk_level": 0-10
         },
         {
           "fame": 6,
-          "action": "Description of the action",
+          "descriotion": "Description of the action",
           "context": "Context of the action",
           "risk_level": 0-10
         }

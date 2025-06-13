@@ -47,6 +47,6 @@ ARG OMNIPARSER_HOST=${OMNIPARSER_HOST}
 ARG OMNIPARSER_PORT=${OMNIPARSER_PORT}
 
 
-EXPOSE ${PORT}
+EXPOSE $OMNIPARSER_PORT
 
-CMD ["uvicorn", "server:app", "--host", "localhost", "--port", "8081"]
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8081"]
