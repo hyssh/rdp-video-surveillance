@@ -7,7 +7,7 @@ ENV CAPTION_MODEL_NAME=florence2
 ENV CAPTION_MODEL_PATH=weights/icon_caption_florence
 ENV DEVICE=cuda
 ENV BOX_THRESHOLD=0.05
-ENV OMNIPARSER_HOST=localhost
+ENV OMNIPARSER_HOST=0.0.0.0
 ENV OMNIPARSER_PORT=8081
 
 # Install dependencies and add deadsnakes PPA for Python 3.12

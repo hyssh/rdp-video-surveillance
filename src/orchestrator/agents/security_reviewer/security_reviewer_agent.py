@@ -13,7 +13,7 @@ from typing import List, Optional, Union, Tuple, Dict, Any
 from semantic_kernel.agents import ChatCompletionAgent, ChatHistoryAgentThread
 from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion
 from semantic_kernel.agents import AzureAIAgentSettings
-# from semantic_kernel.agents import AzureAIAgent, AzureAIAgentSettings, AzureAIAgentThread
+from semantic_kernel.agents import AzureAIAgent, AzureAIAgentSettings, AzureAIAgentThread
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.text_content import TextContent
 
@@ -24,175 +24,193 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
-# Global service instance for singleton pattern
-_service_instance = None
-
-
-
-class SecurityReviewerService:
-    """Service class to manage the lifecycle of Azure AI Agent instances for security review"""
     
-    def __init__(self):
-        self.client = None
-        self.agent = None
-        self.credential = None
+# async def get_security_reviewer_agent_thread():
+#     """Initialize the Azure AI Agent client and resources"""
+#     try:
+#         # Use DefaultAzureCredential for managed identity support in production
+#         credential = DefaultAzureCredential()
         
-    async def initialize(self):
-        """Initialize the Azure AI Agent client and resources"""
-        try:
-            # Use DefaultAzureCredential for managed identity support in production
-            self.credential = DefaultAzureCredential()
-            
-            # # Configure agent settings with appropriate timeout and retry policies
-            # settings = AzureAIAgentSettings(
-            #     endpoint=os.getenv("AZURE_AI_AGENT_ENDPOINT"),
-            #     model_deployment_name=os.getenv("AZURE_AI_AGENT_REASONING_MODEL_DEPLOYMENT_NAME", "o3"),
-            #     timeout=300,  # Increase timeout for production workloads
-            # )
-            
-            # # Create client with explicit settings
-            # self.client = AzureAIAgent.create_client(
-            #     credential=self.credential,
-            #     settings=settings
-            # )
-            
-            # Get or create the agent
-            self.agent = await self._get_or_create_agent()
-            
-            return self.agent
-        except Exception as e:
-            logger.error(f"Failed to initialize SecurityReviewerService: {e}")
-            # Cleanup resources in case of initialization failure
-            await self.close()
-            raise
-    
-    def load_prompts(self, prompt_path: str="agents/security_reviewer/agent.yml") -> str:
-        """
-        Load a prompt from a file.
+#         # Configure agent settings with appropriate timeout and retry policies
+#         settings = AzureAIAgentSettings(
+#             endpoint=os.getenv("AZURE_AI_AGENT_ENDPOINT"),
+#             model_deployment_name=os.getenv("AZURE_AI_AGENT_REASONING_MODEL_DEPLOYMENT_NAME", "o3"),
+#             timeout=300,  # Increase timeout for production workloads
+#         )
+        
+#         # Create client with explicit settings
+#         self.client = AzureAIAgent.create_client(
+#             credential=self.credential,
+#             settings=settings
+#         )
+        
+#         # Get or create the agent
+#         self.agent = await self._get_or_create_agent()
+        
+#         return self.agent
+#     except Exception as e:
+#         logger.error(f"Failed to initialize SecurityReviewerService: {e}")
+#         # Cleanup resources in case of initialization failure
+#         await self.close()
+#         raise
 
-        Args:
-            prompt_path (str): Path to the prompt YAML file.        
-
-        Returns:
-            str: The security reviewer prompt.
-        """
-        try:
-            with open(prompt_path, 'r', encoding='utf-8') as file:
-                prompts = yaml.safe_load(file)
-
-            security_reviewer_prompt = prompts.get('security_reviewer_prompt', '')
-
-            if not security_reviewer_prompt:
-                raise ValueError("security_reviewer_prompt must be provided in the YAML file.")
-            
-            return security_reviewer_prompt
-        except Exception as e:
-            logger.error(f"Error loading prompts from {prompt_path}: {str(e)}")
-            raise
-    
-    async def _get_or_create_agent(self) -> ChatCompletionAgent:
-        """Get existing agent or create a new one"""
-        try:
-            # Check for existing agent
-            # agent_list = self.client.agents.list_agents()
-            
-            # async for existing_agent in agent_list:
-            #     if existing_agent.name == "security_reviewer_agent":
-            #         agent_definition = await self.client.agents.get_agent(existing_agent.id)
-            #         logger.info(f"Found existing agent: {existing_agent.id}")
-            #         return AzureAIAgent(client=self.client, definition=agent_definition)
-            
-            # If no existing agent found, create a new one
-            logger.info("Creating new security reviewer agent")
-            
-            # agent_definition = await self.client.agents.create_agent(
-            #     model=os.getenv("AZURE_AI_AGENT_REASONING_MODEL_DEPLOYMENT_NAME", "o3"),
-            #     name="security_reviewer_agent",
-            #     instructions=instructions,
-            #     description="Agent that reviews the results from image analyzer output for security review.",
-            # )
-            
-            # return AzureAIAgent(client=self.client, definition=agent_definition)
-        
-            agent = ChatCompletionAgent(
-                service=AzureChatCompletion(instruction_role="system"),
-                name="security_image_analyzer_agent",
-                instructions=self.load_prompts(),  # Load the prompt from YAML
-            )
-            return agent
-        
-        except Exception as e:
-            logger.error(f"Error getting or creating agent: {e}")
-            raise
-    
-    async def review_security(self, 
-                            image_analysis_results: str,
-                            thread_id: Optional[str] = None,
-                            custom_prompt: Optional[str] = None) -> str:
-        """
-        Review security issues based on image analysis results
-        
-        Args:
-            image_analysis_results: List of results from image analyzer
-            thread_id: Optional thread ID for continuing a conversation
-            custom_prompt: Optional custom prompt to guide the analysis
-            
-        Returns:
-            The security review result from the agent
-        """
-        if not self.agent:
-            raise ValueError("Agent not initialized. Call initialize() first.")
-        
-        # Build the prompt
-        prompt = custom_prompt or "Review these image analysis results and identify any security issues or concerns."
-        full_prompt = f"{prompt}\n\nImage Analysis Results:\n{image_analysis_results}"
-
-        chat_message_contents = [
-            ChatMessageContent(
-                role="user",
-                items=[
-                    TextContent(text=full_prompt)
-                ]
-            )
-        ]
-        
-        # Create thread if needed
-        # thread = AzureAIAgentThread(thread_id=thread_id, client=self.client) if thread_id else None
-        
-        try:
-            # Get response with proper error handling
-            response = await self.agent.get_response(messages=chat_message_contents, thread=thread, top_p=0.1, temperature=0.1)
-            return response
-        except Exception as e:
-            logger.error(f"Error reviewing security: {e}")
-            if "HTTP transport has already been closed" in str(e):
-                logger.error("Connection error: The Azure AI service connection was closed.")
-            raise
-    
-    async def close(self):
-        """Close and cleanup resources"""
-        try:
-            if self.credential:
-                await self.credential.close()
-                self.credential = None
-        except Exception as e:
-            logger.error(f"Error closing credential: {e}")
-
-async def get_security_reviewer_agent():
+def load_prompts(prompt_path: str="agents/security_reviewer/agent.yml") -> str:
     """
-    Create or retrieve an Azure AI Agent for security review.
-    
+    Load a prompt from a file.
+
+    Args:
+        prompt_path (str): Path to the prompt YAML file.        
+
     Returns:
-        AzureAIAgent: The initialized agent instance
+        str: The security reviewer prompt.
     """
-    global _service_instance
+    try:
+        with open(prompt_path, 'r', encoding='utf-8') as file:
+            prompts = yaml.safe_load(file)
+
+        security_reviewer_prompt = prompts.get('security_reviewer_prompt', '')
+
+        if not security_reviewer_prompt:
+            raise ValueError("security_reviewer_prompt must be provided in the YAML file.")
+        
+        return security_reviewer_prompt
+    except Exception as e:
+        logger.error(f"Error loading prompts from {prompt_path}: {str(e)}")
+        raise
+
+# async def get_or_create_ai_agent() -> AzureAIAgent:
+#     """Get existing agent or create a new one"""
+#     try:
+#         # async for existing_agent in agent_list:
+#         #     if existing_agent.name == "security_reviewer_agent":
+#         #         agent_definition = await self.client.agents.get_agent(existing_agent.id)
+#         #         logger.info(f"Found existing agent: {existing_agent.id}")
+#         #         return AzureAIAgent(client=self.client, definition=agent_definition)
+        
+#         # If no existing agent found, create a new one
+#             # Configure agent settings with appropriate timeout and retry policies
+#         settings = AzureAIAgentSettings(
+#             endpoint=os.getenv("AZURE_AI_AGENT_ENDPOINT"),
+#             model_deployment_name=os.getenv("AZURE_AI_AGENT_REASONING_MODEL_DEPLOYMENT_NAME", "o3"),
+#             # timeout=300,  # Increase timeout for production workloads
+#         )
+        
+#         # Create client with explicit settings
+#         client = AzureAIAgent.create_client(
+#             credential=DefaultAzureCredential(),
+#             settings= settings
+#         )
+
+#         AzureAIAgent.client.agents.creat
+
+#         logger.info("Creating new security reviewer agent")
+        
+#         agent = await client.agents.create_agent(
+#             model=os.getenv("AZURE_AI_AGENT_REASONING_MODEL_DEPLOYMENT_NAME", "o3"),
+#             name="security_reviewer_agent",
+#             instructions=load_prompts(),  # Load the prompt from YAML
+#             description="Agent that reviews the results from image analyzer output for security review.",            
+#         )
+        
+#         return agent  
+#     except Exception as e:
+#         logger.error(f"Error getting or creating agent: {e}")
+#         raise
+
+async def get_or_create_chat_completion_agent() -> ChatCompletionAgent:
+    """Get existing agent or create a new one"""
+    try:
+        # Check for existing agent
+        # agent_list = self.client.agents.list_agents()
+        
+        # async for existing_agent in agent_list:
+        #     if existing_agent.name == "security_reviewer_agent":
+        #         agent_definition = await self.client.agents.get_agent(existing_agent.id)
+        #         logger.info(f"Found existing agent: {existing_agent.id}")
+        #         return AzureAIAgent(client=self.client, definition=agent_definition)
+        
+        # If no existing agent found, create a new one
+        logger.info("Creating new security reviewer agent")
+        
+        # agent_definition = await self.client.agents.create_agent(
+        #     model=os.getenv("AZURE_AI_AGENT_REASONING_MODEL_DEPLOYMENT_NAME", "o3"),
+        #     name="security_reviewer_agent",
+        #     instructions=instructions,
+        #     description="Agent that reviews the results from image analyzer output for security review.",
+        # )
+        
+        # return AzureAIAgent(client=self.client, definition=agent_definition)
     
-    # Create service if it doesn't exist
-    if _service_instance is None:
-        _service_instance = SecurityReviewerService()
+        agent = ChatCompletionAgent(
+            service=AzureChatCompletion(                
+                api_key=os.getenv("AZURE_OPENAI_APIKEY"),
+                endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+                deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"),
+                api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
+            ),
+            name="security_image_analyzer_agent",
+            instructions=load_prompts(),  # Load the prompt from YAML
+        )
+        return agent
     
-    # Initialize and return the agent
-    return await _service_instance.initialize()
+    except Exception as e:
+        logger.error(f"Error getting or creating agent: {e}")
+        raise
+
+async def review_security(self, 
+                        image_analysis_results: str,
+                        thread_id: Optional[str] = None,
+                        custom_prompt: Optional[str] = None) -> str:
+    """
+    Review security issues based on image analysis results
+    
+    Args:
+        image_analysis_results: List of results from image analyzer
+        thread_id: Optional thread ID for continuing a conversation
+        custom_prompt: Optional custom prompt to guide the analysis
+        
+    Returns:
+        The security review result from the agent
+    """
+    if not self.agent:
+        raise ValueError("Agent not initialized. Call initialize() first.")
+    
+    # Build the prompt
+    prompt = custom_prompt or "Review these image analysis results and identify any security issues or concerns."
+    full_prompt = f"{prompt}\n\nImage Analysis Results:\n{image_analysis_results}"
+
+    chat_message_contents = [
+        ChatMessageContent(
+            role="user",
+            items=[
+                TextContent(text=full_prompt)
+            ]
+        )
+    ]
+    
+    # Create thread if needed
+    # thread = AzureAIAgentThread(thread_id=thread_id, client=self.client) if thread_id else None
+    
+    try:
+        # Get response with proper error handling
+        response = await self.agent.get_response(messages=chat_message_contents, thread=thread, top_p=0.1, temperature=0.1)
+        return response
+    except Exception as e:
+        logger.error(f"Error reviewing security: {e}")
+        if "HTTP transport has already been closed" in str(e):
+            logger.error("Connection error: The Azure AI service connection was closed.")
+        raise
+
+async def close(self):
+    """Close and cleanup resources"""
+    try:
+        if self.credential:
+            await self.credential.close()
+            self.credential = None
+    except Exception as e:
+        logger.error(f"Error closing credential: {e}")
+
+
 
 async def security_reviewer_agent_run(agent: ChatCompletionAgent, 
                                     image_analysis_results: Optional[List[Dict[str, Any]]] = None,
@@ -210,7 +228,6 @@ async def security_reviewer_agent_run(agent: ChatCompletionAgent,
     Returns:
         The agent's response
     """
-    global _service_instance
     
     # Verify agent type with proper error handling
     if not isinstance(agent, ChatCompletionAgent):
@@ -232,7 +249,7 @@ async def security_reviewer_agent_run(agent: ChatCompletionAgent,
 
     try:        
         # Get response with proper error handling
-        response = await agent.get_response(messages=full_prompt, thread=thread)
+        response = await agent.get_response(messages=full_prompt, top_p=0.1, temperature=0.1)
         return response
     except Exception as e:
         # Improved error handling with more detailed diagnostics
@@ -241,18 +258,10 @@ async def security_reviewer_agent_run(agent: ChatCompletionAgent,
         # Re-raise for proper error propagation
         raise ValueError(f"Failed to run security reviewer agent: {e}")
 
-async def cleanup_resources():
-    """Clean up all Azure resources properly"""
-    global _service_instance
-    if _service_instance:
-        await _service_instance.close()
-        _service_instance = None
-        logger.info("Azure resources cleaned up")
-
 if __name__ == "__main__":
     async def main():
         try:
-            agent = await get_security_reviewer_agent()
+            agent = await get_or_create_chat_completion_agent()
             logger.info(f"Agent initialized with ID: {agent.id}")
             
             # Test the agent
@@ -268,8 +277,7 @@ if __name__ == "__main__":
             )
             
             logger.info(f"Test result: {result}")
-        finally:
-            # Always clean up resources
-            await cleanup_resources()
+        except Exception as e:
+            logger.error(f"An error occurred in the main function: {e}")
     
     asyncio.run(main())

@@ -1,6 +1,7 @@
 **__pycache__
 **weights
 .env
+.env.docker
 **temp**
 **mp4**
 **.DS_Store
