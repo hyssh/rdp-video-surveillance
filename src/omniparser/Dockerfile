@@ -7,7 +7,7 @@ ENV CAPTION_MODEL_NAME=florence2
 ENV CAPTION_MODEL_PATH=weights/icon_caption_florence
 ENV DEVICE=cuda
 ENV BOX_THRESHOLD=0.05
-ENV OMNIPARSER_HOST=localhost
+ENV OMNIPARSER_HOST=0.0.0.0
 ENV OMNIPARSER_PORT=8081
 
 # Install dependencies and add deadsnakes PPA for Python 3.12
@@ -47,6 +47,6 @@ ARG OMNIPARSER_HOST=${OMNIPARSER_HOST}
 ARG OMNIPARSER_PORT=${OMNIPARSER_PORT}
 
 
-EXPOSE ${PORT}
+EXPOSE $OMNIPARSER_PORT
 
-CMD ["uvicorn", "server:app", "--host", "localhost", "--port", "8081"]
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8081"]

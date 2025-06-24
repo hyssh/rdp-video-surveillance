@@ -1,0 +1,1 @@
+curl -X POST "http://localhost:8082/v2/ingest-video/" -H "accept: application/json"  -H "Content-Type: multipart/form-data" -F "file=@C:\Users\hyssh\workspace\rdp-video-surveillance\images\20test.mp4"

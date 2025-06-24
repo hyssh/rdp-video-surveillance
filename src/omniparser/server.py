@@ -67,12 +67,12 @@ async def test_result_iumage():
 
 
 if __name__ == "__main__":
-    # Run the async initialization
-    loop = asyncio.get_event_loop()
-    init_success = loop.run_until_complete(test_result_iumage())
-    if not init_success:
-        print("Failed to initialize Omniparser.")
-        sys.exit(1)
-    else:
-        print("Omniparser initialized successfully.")
-        uvicorn.run("server:app", host=config['host'], port=config['port'], reload=True)
+    # # Run the async initialization
+    # loop = asyncio.get_event_loop()
+    # init_success = loop.run_until_complete(test_result_iumage())
+    # if not init_success:
+    #     print("Failed to initialize Omniparser.")
+    #     sys.exit(1)
+    # else:
+    #     print("Omniparser initialized successfully.")
+    uvicorn.run("server:app", port=config['port'], reload=True)

@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  omniparser:
+    build:
+      context: ./src/omniparser
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - SOM_MODEL_PATH=weights/icon_detect/model.pt
+      - CAPTION_MODEL_NAME=florence2
+      - CAPTION_MODEL_PATH=weights/icon_caption_florence
+      - DEVICE=cuda
+      - BOX_THRESHOLD=0.05
+      - OMNIPARSER_HOST=0.0.0.0  # Changed to 0.0.0.0 to allow external connections
+      - OMNIPARSER_PORT=8081
+      - PYTHONPATH=/app
+    volumes:
+      - ./src/omniparser/weights:/app/weights
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/test_result_image/"]
+      interval: 600s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  orchestrator:
+    build:
+      context: ./src/orchestrator
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    depends_on:
+      - omniparser
+      # - postgresql_db
+    environment:
+      - OMNIPARSER_HOST=omniparser  
+      - OMNIPARSER_PORT=8081
+      - OMNIPARSER_ENABLE=True
+      - CHAT_COMPLETION_ENABLE=True
+      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING}
+      - AZURE_OPENAI_CHAT_DEPLOYMENT_NAME=gpt-4.1
+      - AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME=text-embedding-ada-002
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION}
+      - AZURE_OPENAI_APIKEY=${AZURE_OPENAI_APIKEY}
+      - AZURE_TEXT_EMBEDDING_ENDPOINT=${AZURE_TEXT_EMBEDDING_ENDPOINT}
+      - AZURE_TEXT_EMBEDDING_APIKEY=${AZURE_TEXT_EMBEDDING_APIKEY}
+      - AZURE_TEXT_EMBEDDING_API_VERSION=2024-12-01-preview
+      - PGHOST=${PGHOST} 
+      - PGUSER=${PGUSER}
+      - PGPORT=5432
+      - PGDATABASE=postgres
+      - PGPASSWORD=${PGPASSWORD}
+      - PYTHONPATH=/app
+      - LOG_LEVEL=info
+    volumes:
+      - ./temp:/app/temp
+      - ./temp_frames:/app/temp_frames
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+#   postgresql_db:
+#     image: postgres:15
+#     restart: unless-stopped
+#     environment:
+#       - POSTGRES_USER=${PGUSER} 
+#       - POSTGRES_PASSWORD=${PGPASSWORD}
+#       - POSTGRES_DB=postgres
+#     volumes:
+#       - db_data:/var/lib/postgresql/data
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -U azureadmin -d postgres"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+#       start_period: 10s
+
+# volumes:
+#   db_data:

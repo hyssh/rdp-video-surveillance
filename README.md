@@ -57,5 +57,9 @@ docker run --gpus all -p 8081:8081 rdp-video-surveillance-omniparser uvicorn ser
 python test/test.py
 ```
 
+**Video ingestion test**
+```cmd
+curl -X POST "http://localhost:8082/ingest-video/" -H "accept: application/json"  -H "Content-Type: multipart/form-data" -F "file=@C:\Users\hyssh\workspace\rdp-video-surveillance\images\80test.mp4"
+```
 
 
