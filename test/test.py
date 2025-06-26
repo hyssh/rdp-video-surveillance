@@ -13,7 +13,7 @@ def test_run(num_of_testing: int = 10):
     """
     With NVIDIA GeForece RTX 4050 Laptop GPU, this might take around 22 seconds
     """
-    image_path = "images\\demo_video_582025_0000000000.jpg"
+    image_path = "images\\windows_desktop.png"
     host = os.getenv("OMNIPARSER_HOST", "localhost")
     port = os.getenv("OMNIPARSER_PORT", "8081")
     florence_url = f"http://{host}:{port}/parse/"
