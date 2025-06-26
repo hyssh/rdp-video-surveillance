@@ -17,6 +17,51 @@ The core challenge addressed is the lack of scalable resources to manually revie
 - **Security Focus**: Supports both detection (e.g., anomaly identification) and prevention (e.g., session termination) strategies; not socpe of this repo
 - **Compliance Alignment**: Designed to align with regulatory requirements, including audit trails and risk classification; not socpe of this repo
 
+## Key Components
+
+### OmniParser (Florence-2)
+
+OmniParser is the core AI model used in this project to detect and understand UI elements in RDP session videos:
+
+- Uses Florence-2 vision models to detect UI icons and elements in desktop screenshots
+- Capable of understanding the context and purpose of UI elements
+- Allows for tracking user interactions with applications
+
+For more information:
+- [OmniParser GitHub Repository](https://github.com/microsoft/OmniParser)
+- [Microsoft Research: OmniParser v2](https://www.microsoft.com/en-us/research/articles/omniparser-v2-turning-any-llm-into-a-computer-use-agent/)
+
+### Orchestrator Service
+
+The orchestrator service manages the overall workflow:
+- Video ingestion and processing
+- Frame extraction and analysis
+- Integration with AI agents for specialized analysis
+- Storage and retrieval of results
+
+### AI Agents
+
+The system includes specialized AI agents for different types of analysis:
+- **Chat Completion Agent**: Provides natural language interface for querying video content
+- **Image Analyzer Agent**: (Under development) Performs detailed analysis of video frames
+- **Security Reviewer Agent**: (Under development) Identifies potential security concerns in user activity
+
+**Important Configuration for GPT model**
+
+ - gpt-4.1 or gpt-4o with 450K Rate limit (Tokens per minute)
+ - Apply a custimom Content Filtering based on your content
+
+
+## Azure Integration
+
+For production deployment, this system leverages various Azure services:
+
+- **Azure Storage**: For storing video files and extracted frames
+- **Azure App Services**: For hosting the orchestrator and web interface
+- **Azure PostgreSQL**: For storing metadata and analysis results
+- **Azure Container Registry**: For managing Docker images
+- **N-Series GPU VMs**: For high-performance model inference
+
 ## Project Structure
 
 ```
@@ -118,44 +163,6 @@ python test/test.py
 curl -X POST "http://localhost:8082/ingest-video/" -H "accept: application/json" -H "Content-Type: multipart/form-data" -F "file=@images/80test.mp4"
 ```
 
-## Key Components
-
-### OmniParser (Florence-2)
-
-OmniParser is the core AI model used in this project to detect and understand UI elements in RDP session videos:
-
-- Uses Florence-2 vision models to detect UI icons and elements in desktop screenshots
-- Capable of understanding the context and purpose of UI elements
-- Allows for tracking user interactions with applications
-
-For more information:
-- [OmniParser GitHub Repository](https://github.com/microsoft/OmniParser)
-- [Microsoft Research: OmniParser v2](https://www.microsoft.com/en-us/research/articles/omniparser-v2-turning-any-llm-into-a-computer-use-agent/)
-
-### Orchestrator Service
-
-The orchestrator service manages the overall workflow:
-- Video ingestion and processing
-- Frame extraction and analysis
-- Integration with AI agents for specialized analysis
-- Storage and retrieval of results
-
-### AI Agents
-
-The system includes specialized AI agents for different types of analysis:
-- **Chat Completion Agent**: Provides natural language interface for querying video content
-- **Image Analyzer Agent**: (Under development) Performs detailed analysis of video frames
-- **Security Reviewer Agent**: (Under development) Identifies potential security concerns in user activity
-
-## Azure Integration
-
-For production deployment, this system leverages various Azure services:
-
-- **Azure Storage**: For storing video files and extracted frames
-- **Azure App Services**: For hosting the orchestrator and web interface
-- **Azure PostgreSQL**: For storing metadata and analysis results
-- **Azure Container Registry**: For managing Docker images
-- **N-Series GPU VMs**: For high-performance model inference
 
 ## License
 
