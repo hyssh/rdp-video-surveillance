@@ -24,35 +24,6 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
-    
-# async def get_security_reviewer_agent_thread():
-#     """Initialize the Azure AI Agent client and resources"""
-#     try:
-#         # Use DefaultAzureCredential for managed identity support in production
-#         credential = DefaultAzureCredential()
-        
-#         # Configure agent settings with appropriate timeout and retry policies
-#         settings = AzureAIAgentSettings(
-#             endpoint=os.getenv("AZURE_AI_AGENT_ENDPOINT"),
-#             model_deployment_name=os.getenv("AZURE_AI_AGENT_REASONING_MODEL_DEPLOYMENT_NAME", "o3"),
-#             timeout=300,  # Increase timeout for production workloads
-#         )
-        
-#         # Create client with explicit settings
-#         self.client = AzureAIAgent.create_client(
-#             credential=self.credential,
-#             settings=settings
-#         )
-        
-#         # Get or create the agent
-#         self.agent = await self._get_or_create_agent()
-        
-#         return self.agent
-#     except Exception as e:
-#         logger.error(f"Failed to initialize SecurityReviewerService: {e}")
-#         # Cleanup resources in case of initialization failure
-#         await self.close()
-#         raise
 
 def load_prompts(prompt_path: str="agents/security_reviewer/agent.yml") -> str:
     """
@@ -78,68 +49,11 @@ def load_prompts(prompt_path: str="agents/security_reviewer/agent.yml") -> str:
         logger.error(f"Error loading prompts from {prompt_path}: {str(e)}")
         raise
 
-# async def get_or_create_ai_agent() -> AzureAIAgent:
-#     """Get existing agent or create a new one"""
-#     try:
-#         # async for existing_agent in agent_list:
-#         #     if existing_agent.name == "security_reviewer_agent":
-#         #         agent_definition = await self.client.agents.get_agent(existing_agent.id)
-#         #         logger.info(f"Found existing agent: {existing_agent.id}")
-#         #         return AzureAIAgent(client=self.client, definition=agent_definition)
-        
-#         # If no existing agent found, create a new one
-#             # Configure agent settings with appropriate timeout and retry policies
-#         settings = AzureAIAgentSettings(
-#             endpoint=os.getenv("AZURE_AI_AGENT_ENDPOINT"),
-#             model_deployment_name=os.getenv("AZURE_AI_AGENT_REASONING_MODEL_DEPLOYMENT_NAME", "o3"),
-#             # timeout=300,  # Increase timeout for production workloads
-#         )
-        
-#         # Create client with explicit settings
-#         client = AzureAIAgent.create_client(
-#             credential=DefaultAzureCredential(),
-#             settings= settings
-#         )
-
-#         AzureAIAgent.client.agents.creat
-
-#         logger.info("Creating new security reviewer agent")
-        
-#         agent = await client.agents.create_agent(
-#             model=os.getenv("AZURE_AI_AGENT_REASONING_MODEL_DEPLOYMENT_NAME", "o3"),
-#             name="security_reviewer_agent",
-#             instructions=load_prompts(),  # Load the prompt from YAML
-#             description="Agent that reviews the results from image analyzer output for security review.",            
-#         )
-        
-#         return agent  
-#     except Exception as e:
-#         logger.error(f"Error getting or creating agent: {e}")
-#         raise
 
 async def get_or_create_chat_completion_agent() -> ChatCompletionAgent:
     """Get existing agent or create a new one"""
     try:
-        # Check for existing agent
-        # agent_list = self.client.agents.list_agents()
-        
-        # async for existing_agent in agent_list:
-        #     if existing_agent.name == "security_reviewer_agent":
-        #         agent_definition = await self.client.agents.get_agent(existing_agent.id)
-        #         logger.info(f"Found existing agent: {existing_agent.id}")
-        #         return AzureAIAgent(client=self.client, definition=agent_definition)
-        
-        # If no existing agent found, create a new one
         logger.info("Creating new security reviewer agent")
-        
-        # agent_definition = await self.client.agents.create_agent(
-        #     model=os.getenv("AZURE_AI_AGENT_REASONING_MODEL_DEPLOYMENT_NAME", "o3"),
-        #     name="security_reviewer_agent",
-        #     instructions=instructions,
-        #     description="Agent that reviews the results from image analyzer output for security review.",
-        # )
-        
-        # return AzureAIAgent(client=self.client, definition=agent_definition)
     
         agent = ChatCompletionAgent(
             service=AzureChatCompletion(                
@@ -156,60 +70,6 @@ async def get_or_create_chat_completion_agent() -> ChatCompletionAgent:
     except Exception as e:
         logger.error(f"Error getting or creating agent: {e}")
         raise
-
-async def review_security(self, 
-                        image_analysis_results: str,
-                        thread_id: Optional[str] = None,
-                        custom_prompt: Optional[str] = None) -> str:
-    """
-    Review security issues based on image analysis results
-    
-    Args:
-        image_analysis_results: List of results from image analyzer
-        thread_id: Optional thread ID for continuing a conversation
-        custom_prompt: Optional custom prompt to guide the analysis
-        
-    Returns:
-        The security review result from the agent
-    """
-    if not self.agent:
-        raise ValueError("Agent not initialized. Call initialize() first.")
-    
-    # Build the prompt
-    prompt = custom_prompt or "Review these image analysis results and identify any security issues or concerns."
-    full_prompt = f"{prompt}\n\nImage Analysis Results:\n{image_analysis_results}"
-
-    chat_message_contents = [
-        ChatMessageContent(
-            role="user",
-            items=[
-                TextContent(text=full_prompt)
-            ]
-        )
-    ]
-    
-    # Create thread if needed
-    # thread = AzureAIAgentThread(thread_id=thread_id, client=self.client) if thread_id else None
-    
-    try:
-        # Get response with proper error handling
-        response = await self.agent.get_response(messages=chat_message_contents, thread=thread, top_p=0.1, temperature=0.1)
-        return response
-    except Exception as e:
-        logger.error(f"Error reviewing security: {e}")
-        if "HTTP transport has already been closed" in str(e):
-            logger.error("Connection error: The Azure AI service connection was closed.")
-        raise
-
-async def close(self):
-    """Close and cleanup resources"""
-    try:
-        if self.credential:
-            await self.credential.close()
-            self.credential = None
-    except Exception as e:
-        logger.error(f"Error closing credential: {e}")
-
 
 
 async def security_reviewer_agent_run(agent: ChatCompletionAgent, 
@@ -257,6 +117,95 @@ async def security_reviewer_agent_run(agent: ChatCompletionAgent,
         
         # Re-raise for proper error propagation
         raise ValueError(f"Failed to run security reviewer agent: {e}")
+    
+# async def get_or_create_ai_agent() -> AzureAIAgent:
+#     """Get existing agent or create a new one"""
+#     try:
+#         # Check for existing agent
+#         agent_list = client.agents.list_agents()
+        
+#         async for existing_agent in agent_list:
+#             if existing_agent.name == "security_reviewer_agent":
+#                 agent_definition = await self.client.agents.get_agent(existing_agent.id)
+#                 logger.info(f"Found existing agent: {existing_agent.id}")
+#                 return AzureAIAgent(client=self.client, definition=agent_definition)
+        
+#         # If no existing agent found, create a new one
+#             # Configure agent settings with appropriate timeout and retry policies
+#         settings = AzureAIAgentSettings(
+#             endpoint=os.getenv("AZURE_AI_AGENT_ENDPOINT"),
+#             model_deployment_name=os.getenv("AZURE_AI_AGENT_REASONING_MODEL_DEPLOYMENT_NAME", "o3"),
+#             # timeout=300,  # Increase timeout for production workloads
+#         )
+        
+#         # Create client with explicit settings
+#         client = AzureAIAgent.create_client(
+#             credential=DefaultAzureCredential(),
+#             settings= settings
+#         )
+
+#         AzureAIAgent.client.agents.creat
+
+#         logger.info("Creating new security reviewer agent")
+        
+#         agent = await client.agents.create_agent(
+#             model=os.getenv("AZURE_AI_AGENT_REASONING_MODEL_DEPLOYMENT_NAME", "o3"),
+#             name="security_reviewer_agent",
+#             instructions=load_prompts(),  # Load the prompt from YAML
+#             description="Agent that reviews the results from image analyzer output for security review.",            
+#         )
+        
+#         return agent  
+#     except Exception as e:
+#         logger.error(f"Error getting or creating agent: {e}")
+#         raise
+
+
+# async def review_security(self, 
+#                         image_analysis_results: str,
+#                         thread_id: Optional[str] = None,
+#                         custom_prompt: Optional[str] = None) -> str:
+#     """
+#     Review security issues based on image analysis results
+    
+#     Args:
+#         image_analysis_results: List of results from image analyzer
+#         thread_id: Optional thread ID for continuing a conversation
+#         custom_prompt: Optional custom prompt to guide the analysis
+        
+#     Returns:
+#         The security review result from the agent
+#     """
+#     if not self.agent:
+#         raise ValueError("Agent not initialized. Call initialize() first.")
+    
+#     # Build the prompt
+#     prompt = custom_prompt or "Review these image analysis results and identify any security issues or concerns."
+#     full_prompt = f"{prompt}\n\nImage Analysis Results:\n{image_analysis_results}"
+
+#     chat_message_contents = [
+#         ChatMessageContent(
+#             role="user",
+#             items=[
+#                 TextContent(text=full_prompt)
+#             ]
+#         )
+#     ]
+    
+#     # Create thread if needed
+#     # thread = AzureAIAgentThread(thread_id=thread_id, client=self.client) if thread_id else None
+    
+#     try:
+#         # Get response with proper error handling
+#         response = await agent.get_response(messages=chat_message_contents, thread=thread, top_p=0.1, temperature=0.1)
+#         return response
+#     except Exception as e:
+#         logger.error(f"Error reviewing security: {e}")
+#         if "HTTP transport has already been closed" in str(e):
+#             logger.error("Connection error: The Azure AI service connection was closed.")
+#         raise
+
+
 
 if __name__ == "__main__":
     async def main():

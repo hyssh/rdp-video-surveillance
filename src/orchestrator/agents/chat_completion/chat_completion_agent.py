@@ -4,9 +4,11 @@ import asyncio
 import logging
 from dotenv import load_dotenv
 from typing import Optional, Dict, Any
+from fastapi import HTTPException
 from semantic_kernel.agents import ChatCompletionAgent, ChatHistoryAgentThread
-from semantic_kernel.contents.chat_history import ChatHistory
 from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion
+from semantic_kernel.contents.chat_history import ChatHistory
+from semantic_kernel.contents.utils.author_role import AuthorRole
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.text_content import TextContent
 from semantic_kernel.contents.image_content import ImageContent
@@ -48,7 +50,7 @@ def load_prompts(prompt_path: str="agents/chat_completion/agent.yml") -> str:
 
 async def chat(agent: ChatCompletionAgent,
                base64_image: str, 
-                omniparser_response: set = ("OMNIPARSER:Unknown"),
+                omniparser_response: Optional[list|set],
                 thread: Optional[ChatHistoryAgentThread] = None,
                 custom_prompt: Optional[str] = None):
     """
@@ -70,37 +72,39 @@ async def chat(agent: ChatCompletionAgent,
     prompt = custom_prompt or "Analyze the image for any suspicious activities or security threats."
     full_prompt = f"{prompt}\n\nUse the given image data:\nAnd the omniparser response:\n{omniparser_response}"
 
-    chat_message_contents = [
-        ChatMessageContent(
-            role="system",
+    # chat_message_contents = [
+    #     ChatMessageContent(
+    #         role=AuthorRole.SYSTEM,
+    #         items=[
+    #             TextContent(text=load_prompts())
+    #         ]
+    #     ),
+    #     ChatMessageContent(
+    #         role=AuthorRole.USER,
+    #         items=[
+    #             ImageContent(data_format="base64", data=base64_image, mime_type="image/jpeg"),
+    #             TextContent(text=full_prompt),
+    #         ]
+    #     )
+    # ]
+    
+    chat_message_contents = ChatMessageContent(
+            role=AuthorRole.USER,
             items=[
-                TextContent(text=load_prompts())
-            ]
-        ),
-        ChatMessageContent(
-            role="user",
-            items=[
-                ImageContent(data_format="base64", data=base64_image, mime_type="image/jpeg")
-            ]
-        ),
-        ChatMessageContent(
-            role="user",
-            items=[
+                ImageContent(data_format="base64", data=base64_image, mime_type="image/jpeg"),
                 TextContent(text=full_prompt),
             ]
-        ),
-    ]
+        )
     
     try:
-        # Get response with proper error handling            
+        # Get response with proper error handling                
         response = await agent.get_response(messages=chat_message_contents, thread=thread, top_p=0.1, temperature=0.1)
         return response
     except Exception as e:
-        # Handle other errors
-        logger.error(f"Error analyzing image: {e}")
-        if "HTTP transport has already been closed" in str(e):
-            logger.error("Connection error: The Azure AI service connection was closed.")
-        raise
+        logger.error(f"Error analyzing image: {e}", exc_info=True)
+        logger.error(f"Exception details: {getattr(e, '__dict__', None)}")
+        raise HTTPException(status_code=500, detail=f"{getattr(e, '__dict__', None)}")
+
 
 
 async def get_chat_completion_agent_thread():
@@ -126,7 +130,7 @@ async def chat_completion_agent_run(agent: ChatCompletionAgent,
                                    thread: Optional[ChatHistoryAgentThread] = None, 
                                    user_input: Optional[str] = None, 
                                    base64_image: str = "IMAGE IS MISSING", 
-                                   omniparser_response: set = ("OMNIPARSER:Status_Unknown")):
+                                   omniparser_response: Optional[set] = None):
     """
     Run the image analyzer agent with the given parameters and rate limit handling.
     

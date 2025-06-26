@@ -1,21 +1,21 @@
-import os
 import gc
 import os
 import cv2
 import base64
+import logging
+import uuid
 import requests
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from dotenv import load_dotenv
 from azure.storage.blob import BlobServiceClient, ContentSettings
 from postgresql import insert_video, insert_frames, update_frame_with_embedding, get_frames_by_video_id, get_video_by_id, update_video_with_security_review
-from agents.image_analyzer.image_analyzer_agent import get_image_analyzer_agent, image_analyzer_agent_run
+# from agents.image_analyzer.image_analyzer_agent import get_image_analyzer_agent, image_analyzer_agent_run
 from agents.security_reviewer.security_reviewer_agent import get_or_create_chat_completion_agent, security_reviewer_agent_run
 from agents.chat_completion.chat_completion_agent import get_chat_completion_agent_thread, chat_completion_agent_run
 from semantic_kernel.connectors.ai.open_ai.settings.azure_open_ai_settings import AzureOpenAISettings
 from semantic_kernel.connectors.ai.open_ai import AzureTextEmbedding
-import logging
-import uuid
+
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
 
@@ -23,12 +23,36 @@ load_dotenv()
 
 orchestrator = FastAPI()
 
+AzureOpenAISettings(
+    embedding_deployment_name=os.getenv("AZURE_AI_AGENT_EMBEDDING_MODEL_DEPLOYMENT_NAME", "text-embedding-ada-002"),
+    text_deployment_name=os.getenv("AZURE_AI_AGENT_CHAT_MODEL_DEPLOYMENT_NAME", "gpt-4.1"),
+    chat_deployment_name=os.getenv("AZURE_AI_AGENT_CHAT_MODEL_DEPLOYMENT_NAME", "gpt-4.1"),
+    api_key=os.getenv("AZURE_OPENAI_APIKEY"),
+    endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    api_version=os.getenv("AZURE_TEXT_EMBEDDING_API_VERSION", "2024-12-01-preview"),
+)
+        
+
 @orchestrator.get("/")
 def read_root():
-    return {"message": "API is running"}
+    return {"message": "Orchstrator API is running"}
+
+@orchestrator.get("/healthcheck")
+async def healthcheck():
+    """
+    Call the Omniparser API with a base64 encoded image
+    """
+    omniparser_url = f"http://{os.getenv("OMNIPARSER_HOST")}:{os.getenv("OMNIPARSER_PORT")}/test_result_image/"
+    
+    # Send the base64 image to the Florence API
+    response = requests.get(omniparser_url)
+    if response.status_code == 200:        
+        return {"message":"Orchestrator API and Omniparser API are running successfully"}
+    else:
+        raise HTTPException(status_code=response.status_code, detail=f"Omniparser API error: {response.text}")
 
 
-async def upload_to_blob_storage(file: UploadFile, container_name: str, blob_name: str = None):
+async def upload_to_blob_storage(file: UploadFile, container_name: str, blob_name: Optional[str] = None):
     """
 
     Upload a file to Azure Blob Storage
@@ -60,7 +84,12 @@ async def upload_to_blob_storage(file: UploadFile, container_name: str, blob_nam
         # Determine blob name - use provided name, original filename, or generate UUID
         if not blob_name:
             # Use original filename or generate a unique ID
-            blob_name = file.filename or f"{uuid.uuid4()}{os.path.splitext(file.filename)[1]}"
+            if file.filename:
+                _, ext = os.path.splitext(file.filename)
+                blob_name = file.filename
+            else:
+                ext = ".jpg"
+                blob_name = f"{uuid.uuid4()}{ext}"
         
         # Get blob client
         blob_client = container_client.get_blob_client(blob_name)
@@ -152,22 +181,13 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
     Process images with Azure AI and update embeddings in the database.
     Using ChatCompletion Agent for image analysis.
     """
-
+    blob_service_client = BlobServiceClient.from_connection_string(os.getenv("AZURE_STORAGE_CONNECTION_STRING", ""))
 
     logging.info(f"Updating image review and text vector for video ID: {preprocess_result['video_id']}")    
     review_images = get_frames_by_video_id(preprocess_result['video_id'])
     logging.info(f"Found {len(review_images)} frames for video ID {preprocess_result['video_id']}")
 
     if os.getenv("CHAT_COMPLETION_ENABLE", "true").lower() == "true":     
-        AzureOpenAISettings(
-            embedding_deployment_name=os.getenv("AZURE_AI_AGENT_EMBEDDING_MODEL_DEPLOYMENT_NAME", "text-embedding-ada-002"),
-            text_deployment_name=os.getenv("AZURE_AI_AGENT_CHAT_MODEL_DEPLOYMENT_NAME", "gpt-4.1"),
-            chat_deployment_name=os.getenv("AZURE_AI_AGENT_CHAT_MODEL_DEPLOYMENT_NAME", "gpt-4.1"),
-            api_key=os.getenv("AZURE_OPENAI_APIKEY"),
-            endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-            api_version=os.getenv("AZURE_TEXT_EMBEDDING_API_VERSION", "2024-12-01-preview"),
-        )
-
         azuretxtembedding = AzureTextEmbedding(
             service_id="azure-text-embedding",
             api_key=os.getenv("AZURE_TEXT_EMBEDDING_APIKEY"),
@@ -176,18 +196,25 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
             )
         
         logging.info(f"Using Azure Text Embedding with deployment name: {azuretxtembedding}")
-        blob_service_client = BlobServiceClient.from_connection_string(os.getenv("AZURE_STORAGE_CONNECTION_STRING"))
         
         chat_completion_agent, chat_completion_agent_thread = await get_chat_completion_agent_thread()
 
         if not chat_completion_agent:
             raise HTTPException(status_code=500, detail="Image analyzer agent not found or failed to initialize")
         logging.info(f"Using image analyzer agent: {chat_completion_agent}")
-
+        
 
         for image in review_images:
             logging.info(f"Processing image {image['id']} with URL: {image.get('url', 'N/A')} and blob name: {image.get('blob_name', 'N/A')}")
             try:
+
+                if len(chat_completion_agent_thread._chat_history.messages) > 33:
+                    logging.info("Trimming chat history to the last 33 messages")
+                    chat_completion_agent_thread._chat_history.messages = chat_completion_agent_thread._chat_history.messages[-33:]
+                    logging.info(f"Chat history trimmed to {len(chat_completion_agent_thread._chat_history.messages)} messages")
+                else:
+                    logging.info(f"Chat history length is {len(chat_completion_agent_thread._chat_history.messages)}, no trimming needed")
+                
                 # read the image from Azure Blob Storage
                 container_client = blob_service_client.get_container_client(image["container_name"])
                 blob_client = container_client.get_blob_client(image["blob_name"])
@@ -209,20 +236,26 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
                             del item['bbox']
                         item_list.append(f"type:{item['type']} interactivity:{item['interactivity']} content:{item['content']}")
                     item_set = set(item_list)
+                                        # Use the thread in your agent call
+                    image_analysis_result_by_chatcompletionagent = await chat_completion_agent_run(
+                        agent=chat_completion_agent, 
+                        base64_image=som_image_base64, 
+                        omniparser_response=item_set, 
+                        thread=chat_completion_agent_thread
+                    )
+                    logging.info(f"Image analysis result: {image_analysis_result_by_chatcompletionagent}")
                 else:
                     logging.info("Omniparser is disabled, using base64 image directly")
                     # Use the base64 image directly without calling Omniparser
                     item_set = set()
-                
-
-                # Use the thread in your agent call
-                image_analysis_result_by_chatcompletionagent = await chat_completion_agent_run(
-                    agent=chat_completion_agent, 
-                    base64_image=base64_image, 
-                    omniparser_response=item_set, 
-                    thread=chat_completion_agent_thread
-                )
-                logging.info(f"Image analysis result: {image_analysis_result_by_chatcompletionagent}")
+                    # Use the thread in your agent call
+                    image_analysis_result_by_chatcompletionagent = await chat_completion_agent_run(
+                        agent=chat_completion_agent, 
+                        base64_image=base64_image, 
+                        omniparser_response=item_set, 
+                        thread=chat_completion_agent_thread
+                    )
+                    logging.info(f"Image analysis result: {image_analysis_result_by_chatcompletionagent}")
 
                 # Update the frame with the description and embedding
                 embedding_vector = await azuretxtembedding.generate_embeddings([str(image_analysis_result_by_chatcompletionagent)])
@@ -242,7 +275,7 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
         logging.info(f"Completed updating image review by ChatCompletion and text vector for video ID: {preprocess_result['video_id']}")
         return preprocess_result
     else:
-        raise HTTPException(status_code=500, detail="ChatCompletion agent is not enabled. Please check your environment variables.")
+        raise HTTPException(status_code=500, detail="Azure AIAgent isn't developed")
 
 
 async def update_video_review_and_text(preprocess_result: Dict[str, Any]):
@@ -251,30 +284,24 @@ async def update_video_review_and_text(preprocess_result: Dict[str, Any]):
     Use the image_descriptions as the input for agent which will generate video description with security review indicator
     """
     logging.info(f"Updating video review and text for video ID: {preprocess_result}")
-    # from semantic_kernel.agents import AzureAIAgentThread, ChatHistoryAgentThread
 
     try:
-        # Get the security reviewer agent
-        logging.info("Retrieving security reviewer agent...")
-        security_reviewer_agent = await get_or_create_chat_completion_agent()
-
-        if not security_reviewer_agent:
-            logging.error("Security reviewer agent not found or failed to initialize")
-            raise HTTPException(status_code=500, detail="Security reviewer agent not found or failed to initialize")
-        
-        logging.info(f"Using security reviewer agent: {security_reviewer_agent}")
-        # Use the image ID as thread metadata for traceability
-        thread_metadata = {
-            "video_id": str(preprocess_result['video_id']),
-            "operation": "image_analysis"
-        }
-        
-        
         # Run the security reviewer agent with proper error handling
         custom_prompt = """
                         Review the Remote Desktop session recording description
                         """
+        
         if os.getenv("CHAT_COMPLETION_ENABLE", "true").lower() == "true":
+            # Get the security reviewer agent
+            logging.info("Retrieving security reviewer agent...")
+            security_reviewer_agent = await get_or_create_chat_completion_agent()
+
+            if not security_reviewer_agent:
+                logging.error("Security reviewer agent not found or failed to initialize")
+                raise HTTPException(status_code=500, detail="Security reviewer agent not found or failed to initialize")
+            
+            logging.info(f"Using security reviewer agent: {security_reviewer_agent}")
+
             # Get frames for the video
             review_images = get_frames_by_video_id(preprocess_result['video_id'])
             logging.info(f"Found {len(review_images)} frames for video ID {review_images}")
@@ -291,7 +318,7 @@ async def update_video_review_and_text(preprocess_result: Dict[str, Any]):
             
             if len(image_analysis_results) < 1:
                 logging.warning(f"No image descriptions found for video ID {preprocess_result['video_id']}")
-                return preprocess_result
+                raise HTTPException(status_code=400, detail="No image descriptions found for video ID")
                 
             security_review_result = await security_reviewer_agent_run(
                 agent=security_reviewer_agent, 
@@ -299,44 +326,35 @@ async def update_video_review_and_text(preprocess_result: Dict[str, Any]):
                 custom_prompt=custom_prompt,
                 # thread=thread
             )
+                
+            if not security_review_result:
+                raise HTTPException(status_code=500, detail="Azure AIAgent isn't developed")       
+            
+            logging.info(f"Security review result: {security_review_result}")
+            
+            # Extract the content from the result object based on expected return type
+            review_content = ""
+            if hasattr(security_review_result, 'content') and hasattr(security_review_result.content, 'content'):
+                review_content = str(security_review_result.content.content)
+            elif hasattr(security_review_result, 'content'):
+                review_content = str(security_review_result.content)
+            else:
+                review_content = str(security_review_result)
+            
+            # Update the video metadata with the security review result
+            if update_video_with_security_review(preprocess_result['video_id'], description=review_content):
+                logging.info(f"Successfully updated video {preprocess_result['video_id']} with security review")            
+            else:
+                logging.error(f"Failed to update video {preprocess_result['video_id']} with security review result")
+                raise HTTPException(status_code=500, detail=f"Failed to update video {preprocess_result['video_id']} with security review result")
+            
+            return preprocess_result
         else:
             raise HTTPException(status_code=500, detail="ChatCompletion agent is not enabled. Please check your environment variables.")
-            # security_review_result = await security_reviewer_agent_run(
-            #     agent=security_reviewer_agent, 
-            #     custom_prompt=custom_prompt,
-            #     thread=_thread
-            # )
-        
-        if not security_review_result:
-            raise HTTPException(status_code=500, detail="Failed to run security reviewer agent")
-        
-        logging.info(f"Security review result: {security_review_result}")
-        
-        # Extract the content from the result object based on expected return type
-        review_content = ""
-        if hasattr(security_review_result, 'content') and hasattr(security_review_result.content, 'content'):
-            review_content = security_review_result.content.content
-        elif hasattr(security_review_result, 'content'):
-            review_content = security_review_result.content
-        else:
-            review_content = str(security_review_result)
-        
-        # Update the video metadata with the security review result
-        if update_video_with_security_review(preprocess_result['video_id'], review_content):
-            logging.info(f"Successfully updated video {preprocess_result['video_id']} with security review")
-            
-        else:
-            logging.error(f"Failed to update video {preprocess_result['video_id']} with security review result")
-            raise HTTPException(status_code=500, detail=f"Failed to update video {preprocess_result['video_id']} with security review result")
-    
     except Exception as e:
         logging.error(f"Error in update_video_review_and_text: {str(e)}")
-        import traceback
-        logging.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Failed to process security review: {str(e)}")
     
-    # await security_reviewer_agent.client.close()
-    return preprocess_result
 
 
 @orchestrator.post("/v2/ingest-video/")
@@ -351,7 +369,7 @@ async def ingest_video_v2(file: UploadFile = File(...), container_name: str = Fo
         # Create a temporary file with secure naming
         temp_dir = os.path.join(os.getcwd(), "temp")
         os.makedirs(temp_dir, exist_ok=True)
-        temp_filename = os.path.join(temp_dir, f"temp_{uuid.uuid4()}{os.path.splitext(file.filename)[1]}")
+        temp_filename = os.path.join(temp_dir, f"{uuid.uuid4()}{os.path.splitext(file.filename)[1]}")
         
         # Reset file cursor position
         await file.seek(0)
@@ -540,8 +558,8 @@ def split_video(video_path: str, blob_conn_str: str, output_dir: str=r"preproces
         
     finally:
         # Ensure resources are released
-        if 'cap' in locals() and cap is not None:
-            cap.release()
+        # if 'cap' in locals() and cap is not None:
+        #     cap.release()
         gc.collect()
 
 
@@ -552,15 +570,10 @@ if __name__ == "__main__":
     # Only start the server if initialization was successful
     # Start the FastAPI server
     print("Starting Orchestrator API...")
-    async def startup():
-        """Initialize the application and run startup tests"""
-        print("Starting Orchestrator API...")
-        # Properly await the async function
-        return True
     
     # Run the async initialization
     loop = asyncio.get_event_loop()
-    init_success = loop.run_until_complete(startup())
+    init_success = loop.run_until_complete(healthcheck())
 
     # Start the FastAPI server after initialization
     if init_success:

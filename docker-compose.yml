@@ -40,8 +40,8 @@ services:
     restart: unless-stopped
     ports:
       - "8082:8082"
-    depends_on:
-      - omniparser
+    # depends_on:
+      # - omniparser
       # - postgresql_db
     environment:
       - OMNIPARSER_HOST=omniparser  
@@ -49,8 +49,8 @@ services:
       - OMNIPARSER_ENABLE=True
       - CHAT_COMPLETION_ENABLE=True
       - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING}
-      - AZURE_OPENAI_CHAT_DEPLOYMENT_NAME=gpt-4.1
-      - AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME=text-embedding-ada-002
+      - AZURE_OPENAI_CHAT_DEPLOYMENT_NAME=${AZURE_OPENAI_CHAT_DEPLOYMENT_NAME}
+      - AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME=${AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME}
       - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
       - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION}
       - AZURE_OPENAI_APIKEY=${AZURE_OPENAI_APIKEY}
