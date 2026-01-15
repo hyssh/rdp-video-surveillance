@@ -10,12 +10,12 @@ The core challenge addressed is the lack of scalable resources to manually revie
 
 ## Architecture Highlights
 
-- **Ingestion Layer**: Periodic or scheduled crawling of RDP session video files; not socpe of this repo
+- **Ingestion Layer**: Periodic or scheduled crawling of RDP session video files; not in scope of this repo
 - **Storage & Enrichment**: Videos are sliced, annotated, and enriched with metadata to support downstream analysis
 - **Post-Processing**: On-demand querying and summarization via a chat interface or UI, powered by AI search and kernel memory
 - **AI Integration**: Object recognition models (e.g., Florence) identify UI elements and user actions within video frames
-- **Security Focus**: Supports both detection (e.g., anomaly identification) and prevention (e.g., session termination) strategies; not socpe of this repo
-- **Compliance Alignment**: Designed to align with regulatory requirements, including audit trails and risk classification; not socpe of this repo
+- **Security Focus**: Supports both detection (e.g., anomaly identification) and prevention (e.g., session termination) strategies; not in scope of this repo
+- **Compliance Alignment**: Designed to align with regulatory requirements, including audit trails and risk classification; not in scope of this repo
 
 ## Key Components
 
@@ -49,7 +49,7 @@ The system includes specialized AI agents for different types of analysis:
 **Important Configuration for GPT model**
 
  - gpt-4.1 or gpt-4o with 450K Rate limit (Tokens per minute)
- - Apply a custimom Content Filtering based on your content
+ - Apply a custom Content Filtering based on your content
 
 
 ## Azure Integration
