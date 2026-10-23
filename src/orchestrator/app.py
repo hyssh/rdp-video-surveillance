@@ -109,6 +109,7 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 APP_DIR = os.path.join(STATIC_DIR, "app")
 DEMO_ASSETS_DIR = os.path.join(STATIC_DIR, "demo_assets")
 _SOURCE_LOCKS: Dict[int, asyncio.Lock] = {}
+_CLIP_LOCKS: Dict[str, asyncio.Lock] = {}
 
 
 def omniparser_base_url() -> str:
@@ -944,12 +945,15 @@ async def get_video_clip(
     length = max(end - start, 1.0)
     destination = media_utils.clip_cache_path(video_id, start, length)
     if not os.path.exists(destination):
-        try:
-            async with CLIP_SEMAPHORE:
-                await asyncio.to_thread(media_utils.make_clip_sync, source, destination, start, length)
-        except Exception as e:
-            logging.warning(f"Clip extraction failed for video {video_id}: {e}")
-            raise ApiError(404, "clip_unavailable", f"Clip could not be created: {e}", stage)
+        # One ffmpeg run per clip; concurrent identical requests wait, then hit the cache
+        async with _CLIP_LOCKS.setdefault(destination, asyncio.Lock()):
+            if not os.path.exists(destination):
+                try:
+                    async with CLIP_SEMAPHORE:
+                        await asyncio.to_thread(media_utils.make_clip_sync, source, destination, start, length)
+                except Exception as e:
+                    logging.warning(f"Clip extraction failed for video {video_id}: {e}")
+                    raise ApiError(404, "clip_unavailable", f"Clip could not be created: {e}", stage)
     return FileResponse(destination, media_type="video/mp4")
 
 
