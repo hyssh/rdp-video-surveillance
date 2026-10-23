@@ -33,7 +33,7 @@ from semantic_kernel.connectors.ai.open_ai.settings.azure_open_ai_settings impor
 from semantic_kernel.connectors.ai.open_ai import AzureTextEmbedding
 from retry_utils import retry_async
 import media_utils
-from analysis_utils import parse_risk, parse_frame_analysis, elements_from_omniparser, image_size
+from analysis_utils import parse_risk, parse_frame_analysis, elements_from_omniparser, image_size, summary_text
 from errors import ApiError, api_error_response, api_errors, classify_exception, require_env, validation_error_response
 from models import (
     AskRequest, AskResponse, ErrorResponse, FrameDetail, FrameElements, FrameList, IngestAccepted, IngestResult,

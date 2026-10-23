@@ -62,6 +62,7 @@ export function FrameViewer({ videoId, frame, point, elements, showBoxes, hoverI
               <svg className="overlay" viewBox="0 0 1 1" preserveAspectRatio="none" aria-label="UI element overlay">
                 {elements.map((e, i) => {
                   if (visible && !visible(e)) return null;
+                  if (!e.bbox) return null;
                   const [x1, y1, x2, y2] = e.bbox;
                   const on = hoverIdx === i;
                   const c = elementColor(e.type);
