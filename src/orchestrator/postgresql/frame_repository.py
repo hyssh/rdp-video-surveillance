@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from urllib.parse import urlparse
@@ -5,6 +6,11 @@ from typing import Dict, Any, List, Optional, Tuple
 from psycopg2.extras import execute_batch, execute_values
 
 logger = logging.getLogger(__name__)
+
+_NO_ANALYSIS = {
+    "image_description": None, "risk_score": None, "risk_level": None, "action_type": None,
+    "ui_elements": None, "frame_width": None, "frame_height": None,
+}
 
 def insert_frames(video_id: int, frames_data: List[Any]) -> Dict[str, Any]:
     """
@@ -26,9 +32,11 @@ def insert_frames(video_id: int, frames_data: List[Any]) -> Dict[str, Any]:
     
     insert_sql = """
         INSERT INTO frames 
-            (video_id, blob_name, container_name, url, frame_timestamp)
+            (video_id, blob_name, container_name, url, frame_timestamp, image_description,
+             risk_score, risk_level, action_type, ui_elements, frame_width, frame_height)
         VALUES 
-            (%(video_id)s, %(blob_name)s, %(container_name)s, %(url)s, %(frame_timestamp)s)
+            (%(video_id)s, %(blob_name)s, %(container_name)s, %(url)s, %(frame_timestamp)s, %(image_description)s,
+             %(risk_score)s, %(risk_level)s, %(action_type)s, %(ui_elements)s::jsonb, %(frame_width)s, %(frame_height)s)
     """
     
     try:
@@ -63,7 +71,8 @@ def insert_frames(video_id: int, frames_data: List[Any]) -> Dict[str, Any]:
                         "blob_name": blob_name,
                         "container_name": container_name,
                         "url": url,
-                        "frame_timestamp": frame_timestamp
+                        "frame_timestamp": frame_timestamp,
+                        **_NO_ANALYSIS
                     })
                 else:
                     logger.warning(f"Could not parse container and blob name from URL: {url}")
@@ -86,12 +95,17 @@ def insert_frames(video_id: int, frames_data: List[Any]) -> Dict[str, Any]:
                 except (ValueError, IndexError):
                     pass
                 
+                # Optional analysis fields and an explicit timestamp (used by the demo seed script)
+                if frame.get("frame_timestamp") is not None:
+                    frame_timestamp = frame["frame_timestamp"]
                 frame_records.append({
                     "video_id": video_id,
                     "blob_name": blob_name,
                     "container_name": frame.get("container_name"),
                     "url": frame.get("url") or frame.get("blob_url"),
-                    "frame_timestamp": frame_timestamp
+                    "frame_timestamp": frame_timestamp,
+                    **{key: frame.get(key) for key in _NO_ANALYSIS},
+                    "ui_elements": json.dumps(frame["ui_elements"]) if frame.get("ui_elements") is not None else None,
                 })
             else:
                 logger.warning(f"Skipping frame with unsupported type: {type(frame)}")
@@ -128,7 +142,8 @@ def get_frames_by_video_id(video_id: int) -> List[Dict[str, Any]]:
     from .connection import DatabaseManager
     
     select_sql = """
-        SELECT id, video_id, blob_name, container_name, url, frame_timestamp, created_at, image_description
+        SELECT id, video_id, blob_name, container_name, url, frame_timestamp, created_at, image_description,
+               risk_score, risk_level, action_type
         FROM frames
         WHERE video_id = %s
         ORDER BY frame_timestamp
@@ -211,6 +226,40 @@ def update_frames_with_embeddings(updates: List[Tuple[int, str, list]], page_siz
         logger.error(f"Failed to bulk update frames with embeddings: {str(e)}")
         return 0
 
+def update_frames_analysis(rows: List[Dict[str, Any]], page_size: int = 100) -> int:
+    """
+    Bulk store per-frame analysis fields (risk_score, risk_level, action_type, ui_elements,
+    frame_width, frame_height) in a single transaction. Missing keys are stored as NULL.
+    Raises on database errors.
+    """
+    from .connection import DatabaseManager
+
+    if not rows:
+        return 0
+    values = [
+        (
+            r["id"], r.get("risk_score"), r.get("risk_level"), r.get("action_type"),
+            json.dumps(r["ui_elements"]) if r.get("ui_elements") is not None else None,
+            r.get("frame_width"), r.get("frame_height"),
+        )
+        for r in rows
+    ]
+    update_sql = """
+        UPDATE frames AS f
+        SET risk_score = v.risk_score, risk_level = v.risk_level, action_type = v.action_type,
+            ui_elements = v.ui_elements, frame_width = v.frame_width, frame_height = v.frame_height
+        FROM (VALUES %s) AS v(id, risk_score, risk_level, action_type, ui_elements, frame_width, frame_height)
+        WHERE f.id = v.id
+        RETURNING f.id
+    """
+    with DatabaseManager() as cursor:
+        updated = execute_values(
+            cursor, update_sql, values,
+            template="(%s::int, %s::int, %s::text, %s::text, %s::jsonb, %s::int, %s::int)",
+            page_size=page_size, fetch=True,
+        )
+        return len(updated)
+
 def list_frames(video_id: int, limit: int = 50, offset: int = 0):
     """
     Return (rows, total) for a page of a video's frames ordered by timestamp. Raises on database errors.
@@ -222,7 +271,7 @@ def list_frames(video_id: int, limit: int = 50, offset: int = 0):
         total = cursor.fetchone()[0]
         cursor.execute(
             """
-            SELECT id, frame_timestamp, image_description, url
+            SELECT id, frame_timestamp, image_description, url, risk_score, risk_level, action_type
             FROM frames
             WHERE video_id = %s
             ORDER BY frame_timestamp, id
@@ -309,3 +358,37 @@ def get_frames_without_embeddings(limit: int = 100) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Failed to get frames without embeddings: {str(e)}")
         return []
+
+def get_frame(frame_id: int) -> Optional[Dict[str, Any]]:
+    """Return one frame with analysis fields (incl. ui_elements), or None. Raises on database errors."""
+    from .connection import DatabaseManager
+
+    with DatabaseManager() as cursor:
+        cursor.execute(
+            """
+            SELECT id, video_id, blob_name, container_name, url, frame_timestamp, image_description,
+                   risk_score, risk_level, action_type, ui_elements, frame_width, frame_height
+            FROM frames
+            WHERE id = %s
+            """,
+            (frame_id,),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def list_timeline_frames(video_id: int) -> List[Dict[str, Any]]:
+    """All frames of a video (no pagination) with risk fields, ordered by time. Raises on database errors."""
+    from .connection import DatabaseManager
+
+    with DatabaseManager() as cursor:
+        cursor.execute(
+            """
+            SELECT id, frame_timestamp, image_description, risk_score, risk_level, action_type
+            FROM frames
+            WHERE video_id = %s
+            ORDER BY frame_timestamp, id
+            """,
+            (video_id,),
+        )
+        return [dict(row) for row in cursor.fetchall()]

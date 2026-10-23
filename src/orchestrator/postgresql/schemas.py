@@ -58,6 +58,20 @@ def initialize_schemas():
         )
         """,
         """
+        ALTER TABLE videos
+            ADD COLUMN IF NOT EXISTS duration_s INTEGER,
+            ADD COLUMN IF NOT EXISTS risk_score INTEGER
+        """,
+        """
+        ALTER TABLE frames
+            ADD COLUMN IF NOT EXISTS risk_score INTEGER,
+            ADD COLUMN IF NOT EXISTS risk_level VARCHAR(20),
+            ADD COLUMN IF NOT EXISTS action_type VARCHAR(50),
+            ADD COLUMN IF NOT EXISTS ui_elements JSONB,
+            ADD COLUMN IF NOT EXISTS frame_width INTEGER,
+            ADD COLUMN IF NOT EXISTS frame_height INTEGER
+        """,
+        """
         CREATE INDEX IF NOT EXISTS idx_frames_video_id ON frames(video_id)
         """,
         """

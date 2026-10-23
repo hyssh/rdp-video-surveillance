@@ -5,7 +5,9 @@ from .video_repository import (
     get_video_by_id, 
     update_video_with_security_review,
     list_videos,
-    get_video_detail
+    get_video_detail,
+    update_video_metrics,
+    get_stats
 )
 from .job_repository import create_job, update_job, get_job, fail_interrupted_jobs
 from .frame_repository import (
@@ -15,7 +17,10 @@ from .frame_repository import (
     update_frames_with_embeddings,
     search_similar_frames,
     get_frames_without_embeddings,
-    list_frames
+    list_frames,
+    update_frames_analysis,
+    get_frame,
+    list_timeline_frames
 )
 
 # Initialize the database when the module is imported
@@ -39,5 +44,10 @@ __all__ = [
     'create_job',
     'update_job',
     'get_job',
-    'fail_interrupted_jobs'
+    'fail_interrupted_jobs',
+    'update_video_metrics',
+    'get_stats',
+    'update_frames_analysis',
+    'get_frame',
+    'list_timeline_frames'
 ]

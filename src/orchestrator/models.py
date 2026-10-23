@@ -44,6 +44,7 @@ class VideoListItem(BaseModel):
     id: int
     filename: Optional[str] = None
     security_level: Optional[str] = None
+    risk_score: Optional[int] = Field(None, description="Overall risk 0-100")
     created_at: Optional[datetime] = None
 
 
@@ -59,6 +60,8 @@ class VideoDetail(BaseModel):
     filename: Optional[str] = None
     summary: Optional[str] = Field(None, description="Security-review summary (videos.video_description)")
     security_level: Optional[str] = None
+    risk_score: Optional[int] = Field(None, description="Overall risk 0-100")
+    duration_s: Optional[int] = Field(None, description="Video duration in seconds")
     frame_count: int
     frames_described: int
     created_at: Optional[datetime] = None
@@ -69,6 +72,9 @@ class FrameItem(BaseModel):
     frame_timestamp: Optional[int] = Field(None, description="Seconds from the start of the video")
     image_description: Optional[str] = None
     url: Optional[str] = None
+    risk_score: Optional[int] = Field(None, description="0-100")
+    risk_level: Optional[str] = Field(None, description="low | medium | high | critical")
+    action_type: Optional[str] = Field(None, description="e.g. login, file_transfer, admin_console, browsing, terminal, config_change, idle, other")
 
 
 class FrameList(BaseModel):
@@ -97,3 +103,88 @@ class AskResponse(BaseModel):
     answer: Optional[str] = Field(None, description="LLM answer citing frame ids/timestamps; null if unavailable")
     matches: List[AskMatch]
     note: Optional[str] = Field(None, description="Set when the answer is missing or partial")
+
+
+class RiskDistribution(BaseModel):
+    low: int = 0
+    medium: int = 0
+    high: int = 0
+    critical: int = 0
+
+
+class ActionTypeCount(BaseModel):
+    action_type: str
+    count: int
+
+
+class RecentVideo(BaseModel):
+    id: int
+    filename: Optional[str] = None
+    security_level: Optional[str] = None
+    risk_score: Optional[int] = None
+    created_at: Optional[datetime] = None
+
+
+class Stats(BaseModel):
+    videos_total: int
+    frames_total: int
+    frames_described: int
+    high_risk_videos: int = Field(description="Videos with security_level high or critical")
+    risk_distribution: RiskDistribution = Field(description="Videos by security_level")
+    action_types: List[ActionTypeCount]
+    recent_videos: List[RecentVideo]
+
+
+class TimelinePoint(BaseModel):
+    frame_id: int
+    t: Optional[int] = Field(None, description="Seconds from video start")
+    risk_score: Optional[int] = None
+    risk_level: Optional[str] = None
+    action_type: Optional[str] = None
+
+
+class TimelineEvent(BaseModel):
+    frame_id: int
+    t: Optional[int] = None
+    risk_level: Optional[str] = None
+    action_type: Optional[str] = None
+    description: Optional[str] = None
+
+
+class Timeline(BaseModel):
+    video_id: int
+    filename: Optional[str] = None
+    duration_s: Optional[int] = None
+    interval_s: int = Field(description="Approximate seconds between sampled frames")
+    summary: Optional[str] = None
+    security_level: Optional[str] = None
+    risk_score: Optional[int] = None
+    points: List[TimelinePoint] = Field(description="One per frame, ordered by t")
+    events: List[TimelineEvent] = Field(description="Frames with risk_score >= 50, ordered by t")
+
+
+class FrameDetail(BaseModel):
+    id: int
+    video_id: Optional[int] = None
+    frame_timestamp: Optional[int] = None
+    image_description: Optional[str] = None
+    risk_score: Optional[int] = None
+    risk_level: Optional[str] = None
+    action_type: Optional[str] = None
+    image_url: str = Field(description="Relative URL of the image bytes, /frames/{id}/image")
+    frame_width: Optional[int] = None
+    frame_height: Optional[int] = None
+
+
+class UiElement(BaseModel):
+    type: Optional[str] = None
+    content: Optional[str] = None
+    interactivity: Optional[bool] = None
+    bbox: Optional[List[float]] = Field(None, description="[x1, y1, x2, y2] as 0-1 ratios of the frame size")
+
+
+class FrameElements(BaseModel):
+    frame_id: int
+    width: Optional[int] = None
+    height: Optional[int] = None
+    elements: List[UiElement]

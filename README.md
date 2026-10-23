@@ -72,6 +72,11 @@ rdp-video-surveillance/
 ├── .env.docker.example     # docker compose flavored variant of the template
 ├── demo.sh                 # bash demo: ingest -> poll job -> print summary -> ask a question
 ├── demo.cmd                # Windows demo: submits a video to the async ingest endpoint
+├── scripts/
+│   ├── seed_demo_data.py   # Seeds 3 synthetic RDP sessions (frames, risk scores, embeddings) for the demo UI
+│   ├── demo_render.py      # Pillow renderer: fake Windows desktop frames + UI element boxes
+│   ├── demo_sessions.py    # Story/script data for the 3 demo sessions
+│   └── requirements-seed.txt
 ├── images/
 │   └── windows_desktop.png # Sample screenshot used by test/test.py (.mp4 files are git-ignored; bring your own)
 ├── src/
@@ -86,7 +91,10 @@ rdp-video-surveillance/
 │   └── orchestrator/       # Orchestration service
 │       ├── app.py          # FastAPI app (port 8082): endpoints + background pipeline
 │       ├── static/
-│       │   └── index.html  # Auditor web UI (served at /ui)
+│       │   ├── index.html  # Minimal fallback UI (served at /ui when the React app is not built)
+│       │   ├── app/        # Built auditor web app (served at /ui)
+│       │   └── demo_assets/<session>/frame_XX.png  # Synthetic frames written by scripts/seed_demo_data.py
+│       ├── ui/             # React/Vite source of the auditor web app
 │       ├── models.py       # Pydantic request/response models
 │       ├── errors.py       # Structured error responses
 │       ├── retry_utils.py  # Retry/backoff helpers for Azure calls
@@ -257,14 +265,57 @@ Sample auditor questions:
 
 ## Auditor UI
 
-A minimal single-page UI is served by the orchestrator at **`http://localhost:8082/ui`** (no extra service or build step). It uses the same API as above and lets an auditor:
+The orchestrator serves the auditor web app at **`http://localhost:8082/ui`** (no extra service). It uses the API below (if the React app has not been built, a minimal fallback page with upload, video list and ask box is served instead). Screens:
 
-- upload a recording and watch live job progress (status, stage, frames done/failed, warnings);
-- browse the paginated video list with risk badges;
-- open a video to see its summary, risk, and frames;
-- ask questions in the ask box and see the answer with the matching frames.
+- **Sessions dashboard**: all reviewed sessions with risk badges and overall stats.
+- **Session review**: D3 risk timeline over the session (one point per frame, high-risk events highlighted) plus a frame/clip viewer.
+- **Evidence panel**: the selected frame with the detected UI elements drawn as an overlay (boxes with their text/type).
+- **Ask with citations**: ask a question about a session; the answer lists the matching frames (timestamp, similarity) as citations.
+- **Insights**: risk heatmap, action-type breakdown and a side-by-side comparison of sessions.
 
-Note: frame thumbnails use the blob URLs returned by the API. If the storage container is private, the browser cannot load them and thumbnails may not render (timestamps and descriptions still show). There is no login; see the roadmap.
+Notes: frame images are served by the orchestrator (`/frames/{id}/image`), so private blob containers are fine. Video clips are only available when the source video and ffmpeg are available; otherwise (e.g. seeded demo sessions) the viewer falls back to the frame filmstrip. There is no login; see the roadmap.
+
+## Demo data (seeding)
+
+No Azure video analysis is needed to try the UI. `scripts/seed_demo_data.py` generates three synthetic RDP sessions (fake Windows desktops rendered with Pillow, 1280x720 frames every 3 s) and inserts them into PostgreSQL:
+
+| Session (filename) | Risk | Story | Frames |
+|---|---|---|---|
+| `vendor_db_admin_session.mp4` | critical (94) | Vendor has a ticket for index maintenance, then exports the `dbo.Customers` table (184,203 rows), zips it with a password, copies it to a USB drive, uploads it to an external share and clears the event log | 26 |
+| `vendor_routine_patching.mp4` | low (12) | Approved monthly Windows patching under ticket CHG-48102, restart, verification, ticket closed | 22 |
+| `contractor_mixed_session.mp4` | medium (46) | Mostly finance work; briefly disables antivirus to run an unsigned installer and opens a salary file on the HR share | 24 |
+
+Each frame carries `image_description`, `risk_score`, `risk_level`, `action_type`, `ui_elements` (boxes as 0-1 ratios) and `frame_width/height`; each video has a reviewer-style summary, `security_level`, `risk_score` and `duration_s`. Frames are stored with `container_name='demo-local'` and `blob_name='<session>/frame_XX.png'`; the PNGs live in `src/orchestrator/static/demo_assets/` (committed, about 1 MB in total).
+
+```bash
+pip install -r scripts/requirements-seed.txt
+python scripts/seed_demo_data.py              # idempotent: sessions already present (by filename) are skipped
+python scripts/seed_demo_data.py --reset      # delete and recreate the demo sessions
+python scripts/seed_demo_data.py --render-only  # only regenerate the PNGs, no database needed
+```
+Windows (cmd / PowerShell): the same commands with `python` (or `py`) and `scripts\requirements-seed.txt`.
+
+Requirements and caveats:
+- The database settings (`PGHOST`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`, `PGPORT`) are read from the repo-root `.env`; the database must be reachable from where you run the script (not only from inside Docker). The script adds the demo columns (`risk_score`, `ui_elements`, ...) with `ADD COLUMN IF NOT EXISTS` if the orchestrator has not created them yet.
+- **Embeddings**: if `AZURE_TEXT_EMBEDDING_ENDPOINT` and `AZURE_TEXT_EMBEDDING_APIKEY` are set (and `semantic-kernel` is installed) the frame descriptions are embedded with the same Azure deployment the orchestrator uses. Otherwise the script stores deterministic **pseudo-embeddings** (hashed word vectors): the UI works, but the ranking of "Ask" matches is only roughly keyword-like and the answer text still needs Azure OpenAI. For a real Q&A demo set the Azure variables and run with `--reset`.
+- Seeded frame descriptions are plain narrative text (frames analyzed by the real pipeline store the model's JSON). Seeded sessions have no source video, so there are no clips.
+
+## Demo script (5-minute talk track)
+
+Seed the data, start the stack (`docker compose up`) and open `http://localhost:8082/ui`.
+
+1. **Dashboard (30 s)**: "An auditor sees every recorded vendor session ranked by risk." Point at the totals, the risk distribution and the three sessions; one is critical, one medium, one low.
+2. **Open the risky session (30 s)**: `vendor_db_admin_session.mp4`. Read the summary: vendor under a ticket for index rebuilds, but customer data left the server.
+3. **Risk timeline (60 s)**: the D3 timeline stays low during login and ticket review, then climbs from the full-table query to the export, USB copy, upload and log clearing. Click the peaks: each is a frame with its action type and risk level.
+4. **Evidence frame (60 s)**: open the SharedDrop "Upload complete" frame (about 00:00:54) and the Export Wizard frame (about 00:00:30). Toggle the UI element overlay to show the boxes behind the text (share link, file name, buttons): "the claim is backed by what was on screen."
+5. **Ask (60 s)**: ask *"What data was exported and where?"*. The answer should cite the customer table CSV/zip, the USB drive `BACKUP_USB (E:)` and the external `shared-drop` site, each with a frame and timestamp to click.
+6. **Compare (60 s)**: open Insights and compare the critical session with `vendor_routine_patching.mp4` (flat low timeline, ticket-scoped actions) and `contractor_mixed_session.mp4` (two short medium peaks: AV off, HR share). Close with: "triage in seconds, evidence in one click; the model output is a lead, not ground truth."
+
+### Sample questions per seed session
+
+- `vendor_db_admin_session.mp4`: What data was exported and where? / Was the activity within the scope of the change ticket? / Did the user try to hide their actions? / Which external sites or devices were used?
+- `vendor_routine_patching.mp4`: Which updates were installed? / Was anything done outside the patching ticket? / Was any sensitive data accessed or moved?
+- `contractor_mixed_session.mp4`: Did the user change any security settings? / Which software was installed and was it approved? / Which network shares were accessed and are they related to the task?
 
 ## API reference
 
@@ -281,6 +332,13 @@ Orchestrator, `http://localhost:8082` (UI at `/ui`, interactive docs at `/docs`)
 | GET | `/videos/{id}` | One video with summary | 200 `{id, filename, summary, security_level, frame_count, frames_described, created_at}` |
 | GET | `/videos/{id}/frames?limit&offset` | Frames with analysis (`limit` 1-500) | 200 `{items[{id, frame_timestamp, image_description, url}], total, limit, offset}` |
 | POST | `/videos/{id}/ask` | Ask about a video (JSON `{question, top_k}`) | 200 `{video_id, question, answer, matches[{frame_id, frame_timestamp, image_description, similarity, url}], note}` |
+| GET | `/stats` | Dashboard totals | 200 `{videos_total, frames_total, frames_described, high_risk_videos, risk_distribution, action_types[], recent_videos[]}` |
+| GET | `/videos/{id}/timeline` | Risk timeline | 200 `{video_id, filename, duration_s, interval_s, summary, security_level, risk_score, points[], events[]}` (`events` = frames with risk_score >= 50) |
+| GET | `/frames/{id}` | Frame metadata | 200 `{id, video_id, frame_timestamp, image_description, risk_score, risk_level, action_type, image_url, frame_width, frame_height}` |
+| GET | `/frames/{id}/image` | Frame image (proxied from blob storage or local demo assets) | 200 image bytes |
+| GET | `/frames/{id}/elements` | Detected UI elements for the overlay | 200 `{frame_id, width, height, elements[{type, content, interactivity, bbox}]}` (`bbox` = x1,y1,x2,y2 as 0-1 ratios) |
+| GET | `/videos/{id}/clip?t&before&after` | Short MP4 clip around second `t` | 200 `video/mp4`; 404 `clip_unavailable` without source video/ffmpeg |
+| GET | `/videos/{id}/stream` | Source video with HTTP Range support | 200/206 `video/mp4`; 404 `clip_unavailable` |
 
 OmniParser, `http://localhost:8081`: `GET /health`, `POST /parse/` (image in, parsed UI elements out; returns 429 + `Retry-After` when busy).
 
@@ -321,7 +379,7 @@ Throughput is bounded by a single GPU and by Azure OpenAI rate limits; raising c
 - **Jobs run in-process**: they execute inside the orchestrator process and are lost on restart. At startup, jobs still non-terminal are marked `failed` with `interrupted by restart`; this is wrong when running several uvicorn workers (one worker would fail another's live jobs), so keep a single worker.
 - **No retry endpoint**: a `failed` job (or a video with `frames_failed > 0`) must be re-ingested by uploading again; blobs are stored as `{job_id}/{filename}`, so re-uploads never overwrite.
 - **Stale-job cleanup is partial and not multi-worker-safe**: only the restart sweep above; jobs that hang while the process stays up are not detected or removed.
-- **Minimal UI only**: the Auditor UI covers upload, browse and ask; no reports/export, search across videos, or user management.
+- **UI scope**: the auditor UI has no report export, cross-video search or user management.
 - **No durable queue**: jobs run in-process and are lost on restart (see above); a persistent queue/worker is the planned fix.
 - **No authentication** on the UI or APIs (demo only).
 - **Azure-only**: Blob Storage, Azure OpenAI and PostgreSQL are required; there is no local mode.

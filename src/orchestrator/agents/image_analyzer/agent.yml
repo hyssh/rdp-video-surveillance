@@ -67,6 +67,7 @@ image_analyzer_prompt: |
     "security_risk_score": "Short narrative of the overall security risk, including any sensitive information or high-risk activities.",
     "risk_score": 0-100,
     "risk_level": "low | medium | high | critical",
+    "action_type": "login | file_transfer | admin_console | browsing | terminal | config_change | email | document_edit | idle | other",
     "analysis_results": {
       "key_observations": [
         {
@@ -84,3 +85,15 @@ image_analyzer_prompt: |
   }
 
   Include one entry in key_observations per notable activity. Do not add observations without evidence.
+
+  The top-level `risk_score`, `risk_level` and `action_type` describe the frame as a whole (the highest-risk activity visible) and are always required. Choose exactly one `action_type` for the dominant activity:
+  - login: signing in or connecting to a system, server, or application
+  - file_transfer: copying, moving, uploading, downloading, exporting, or archiving files or data
+  - admin_console: database, server, or other administrative consoles and management tools
+  - browsing: web browsing and web applications
+  - terminal: command prompt, PowerShell, shell, or script execution
+  - config_change: changing system, security, or application settings, or clearing logs
+  - email: reading or writing email or chat messages
+  - document_edit: working in office documents, spreadsheets, or text editors
+  - idle: empty or idle desktop, lock screen, or no user activity
+  - other: anything that fits none of the above

@@ -1,0 +1,4725 @@
+[
+ {
+  "id": 1,
+  "filename": "vendor_db_admin_session.mp4",
+  "duration_s": 75,
+  "interval_s": 3,
+  "summary": "**Risk: CRITICAL.** A vendor admin, working under change ticket CHG-48213, went far beyond the approved scope: queried customer PII, created a hidden sysadmin login (tmp_support), disabled Windows Defender, exported the PaymentCards table, uploaded it to personal cloud storage and then cleared the Security event log. Recommend immediate account suspension, credential rotation and incident response.",
+  "risk_score": 77,
+  "security_level": "critical",
+  "created_at": "2025-01-14T14:02:11Z",
+  "has_clip": false,
+  "frames": [
+   {
+    "id": 101,
+    "t": 0,
+    "action_type": "login",
+    "risk_score": 10,
+    "risk_level": "low",
+    "description": "RDP session starts; vendor authenticates to jump host JUMP-HOST-01 and completes an MFA prompt.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Remote Desktop Connection",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Username",
+      "interactivity": true,
+      "bbox": [
+       0.35,
+       0.35,
+       0.65,
+       0.42
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Password",
+      "interactivity": true,
+      "bbox": [
+       0.35,
+       0.45,
+       0.65,
+       0.52
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Sign in",
+      "interactivity": true,
+      "bbox": [
+       0.42,
+       0.56,
+       0.58,
+       0.63
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 102,
+    "t": 3,
+    "action_type": "login",
+    "risk_score": 12,
+    "risk_level": "low",
+    "description": "Windows desktop loads and the vendor opens the Start menu.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Remote Desktop Connection",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Username",
+      "interactivity": true,
+      "bbox": [
+       0.35,
+       0.35,
+       0.65,
+       0.42
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Password",
+      "interactivity": true,
+      "bbox": [
+       0.35,
+       0.45,
+       0.65,
+       0.52
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Sign in",
+      "interactivity": true,
+      "bbox": [
+       0.42,
+       0.56,
+       0.58,
+       0.63
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 103,
+    "t": 6,
+    "action_type": "browsing",
+    "risk_score": 15,
+    "risk_level": "low",
+    "description": "Vendor opens ServiceNow change ticket CHG-48213 in Edge to confirm the approved maintenance window.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Microsoft Edge",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Address bar",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.8,
+       0.12
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Navigation menu",
+      "interactivity": true,
+      "bbox": [
+       0.02,
+       0.15,
+       0.2,
+       0.9
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Page content",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.2,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Submit",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     }
+    ]
+   },
+   {
+    "id": 104,
+    "t": 9,
+    "action_type": "terminal",
+    "risk_score": 20,
+    "risk_level": "low",
+    "description": "PowerShell window opened; vendor runs hostname and whoami.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Windows PowerShell",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.08,
+       0.95,
+       0.14
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Console output",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.15,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Command prompt",
+      "interactivity": true,
+      "bbox": [
+       0.05,
+       0.86,
+       0.95,
+       0.92
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 105,
+    "t": 12,
+    "action_type": "admin_console",
+    "risk_score": 30,
+    "risk_level": "medium",
+    "description": "SQL Server Management Studio launched and connected to PROD-SQL-02 with a sysadmin login.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "SQL Server Management Studio",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Object Explorer",
+      "interactivity": true,
+      "bbox": [
+       0.01,
+       0.08,
+       0.22,
+       0.9
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Query editor",
+      "interactivity": true,
+      "bbox": [
+       0.24,
+       0.1,
+       0.99,
+       0.45
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Results grid",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.48,
+       0.99,
+       0.9
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Execute",
+      "interactivity": true,
+      "bbox": [
+       0.25,
+       0.06,
+       0.32,
+       0.095
+      ]
+     }
+    ]
+   },
+   {
+    "id": 106,
+    "t": 15,
+    "action_type": "admin_console",
+    "risk_score": 35,
+    "risk_level": "medium",
+    "description": "Object Explorer expanded; vendor browses customer_db tables including dbo.Customers and dbo.PaymentCards.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "SQL Server Management Studio",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Object Explorer",
+      "interactivity": true,
+      "bbox": [
+       0.01,
+       0.08,
+       0.22,
+       0.9
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Query editor",
+      "interactivity": true,
+      "bbox": [
+       0.24,
+       0.1,
+       0.99,
+       0.45
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Results grid",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.48,
+       0.99,
+       0.9
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Execute",
+      "interactivity": true,
+      "bbox": [
+       0.25,
+       0.06,
+       0.32,
+       0.095
+      ]
+     }
+    ]
+   },
+   {
+    "id": 107,
+    "t": 18,
+    "action_type": "admin_console",
+    "risk_score": 45,
+    "risk_level": "medium",
+    "description": "Query window opened; SELECT TOP 1000 * FROM dbo.Customers executed (not in the change ticket scope).",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "SQL Server Management Studio",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Object Explorer",
+      "interactivity": true,
+      "bbox": [
+       0.01,
+       0.08,
+       0.22,
+       0.9
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Query editor",
+      "interactivity": true,
+      "bbox": [
+       0.24,
+       0.1,
+       0.99,
+       0.45
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Results grid",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.48,
+       0.99,
+       0.9
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Execute",
+      "interactivity": true,
+      "bbox": [
+       0.25,
+       0.06,
+       0.32,
+       0.095
+      ]
+     }
+    ]
+   },
+   {
+    "id": 108,
+    "t": 21,
+    "action_type": "admin_console",
+    "risk_score": 58,
+    "risk_level": "high",
+    "description": "Query results show SSN and email columns in clear text on screen.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "SQL Server Management Studio",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Object Explorer",
+      "interactivity": true,
+      "bbox": [
+       0.01,
+       0.08,
+       0.22,
+       0.9
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Query editor",
+      "interactivity": true,
+      "bbox": [
+       0.24,
+       0.1,
+       0.99,
+       0.45
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Results grid",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.48,
+       0.99,
+       0.9
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Execute",
+      "interactivity": true,
+      "bbox": [
+       0.25,
+       0.06,
+       0.32,
+       0.095
+      ]
+     }
+    ]
+   },
+   {
+    "id": 109,
+    "t": 24,
+    "action_type": "config_change",
+    "risk_score": 62,
+    "risk_level": "high",
+    "description": "Vendor opens Security > Logins and inspects the sa and svc_backup accounts.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Login Properties",
+      "interactivity": false,
+      "bbox": [
+       0.15,
+       0.08,
+       0.85,
+       0.14
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Login name",
+      "interactivity": true,
+      "bbox": [
+       0.2,
+       0.2,
+       0.8,
+       0.27
+      ]
+     },
+     {
+      "type": "checkbox",
+      "content": "Enforce password policy",
+      "interactivity": true,
+      "bbox": [
+       0.2,
+       0.32,
+       0.6,
+       0.38
+      ]
+     },
+     {
+      "type": "checkbox",
+      "content": "sysadmin role",
+      "interactivity": true,
+      "bbox": [
+       0.2,
+       0.42,
+       0.6,
+       0.48
+      ]
+     },
+     {
+      "type": "button",
+      "content": "OK",
+      "interactivity": true,
+      "bbox": [
+       0.62,
+       0.82,
+       0.74,
+       0.88
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Cancel",
+      "interactivity": true,
+      "bbox": [
+       0.76,
+       0.82,
+       0.88,
+       0.88
+      ]
+     }
+    ]
+   },
+   {
+    "id": 110,
+    "t": 27,
+    "action_type": "config_change",
+    "risk_score": 72,
+    "risk_level": "high",
+    "description": "Creates a new SQL login 'tmp_support' and assigns the sysadmin server role.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Login Properties",
+      "interactivity": false,
+      "bbox": [
+       0.15,
+       0.08,
+       0.85,
+       0.14
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Login name",
+      "interactivity": true,
+      "bbox": [
+       0.2,
+       0.2,
+       0.8,
+       0.27
+      ]
+     },
+     {
+      "type": "checkbox",
+      "content": "Enforce password policy",
+      "interactivity": true,
+      "bbox": [
+       0.2,
+       0.32,
+       0.6,
+       0.38
+      ]
+     },
+     {
+      "type": "checkbox",
+      "content": "sysadmin role",
+      "interactivity": true,
+      "bbox": [
+       0.2,
+       0.42,
+       0.6,
+       0.48
+      ]
+     },
+     {
+      "type": "button",
+      "content": "OK",
+      "interactivity": true,
+      "bbox": [
+       0.62,
+       0.82,
+       0.74,
+       0.88
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Cancel",
+      "interactivity": true,
+      "bbox": [
+       0.76,
+       0.82,
+       0.88,
+       0.88
+      ]
+     }
+    ]
+   },
+   {
+    "id": 111,
+    "t": 30,
+    "action_type": "config_change",
+    "risk_score": 78,
+    "risk_level": "critical",
+    "description": "'Enforce password policy' is unchecked for the new tmp_support login.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Login Properties",
+      "interactivity": false,
+      "bbox": [
+       0.15,
+       0.08,
+       0.85,
+       0.14
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Login name",
+      "interactivity": true,
+      "bbox": [
+       0.2,
+       0.2,
+       0.8,
+       0.27
+      ]
+     },
+     {
+      "type": "checkbox",
+      "content": "Enforce password policy",
+      "interactivity": true,
+      "bbox": [
+       0.2,
+       0.32,
+       0.6,
+       0.38
+      ]
+     },
+     {
+      "type": "checkbox",
+      "content": "sysadmin role",
+      "interactivity": true,
+      "bbox": [
+       0.2,
+       0.42,
+       0.6,
+       0.48
+      ]
+     },
+     {
+      "type": "button",
+      "content": "OK",
+      "interactivity": true,
+      "bbox": [
+       0.62,
+       0.82,
+       0.74,
+       0.88
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Cancel",
+      "interactivity": true,
+      "bbox": [
+       0.76,
+       0.82,
+       0.88,
+       0.88
+      ]
+     }
+    ]
+   },
+   {
+    "id": 112,
+    "t": 33,
+    "action_type": "terminal",
+    "risk_score": 70,
+    "risk_level": "high",
+    "description": "PowerShell: net localgroup administrators tmp_support /add executed on the database host.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Windows PowerShell",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.08,
+       0.95,
+       0.14
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Console output",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.15,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Command prompt",
+      "interactivity": true,
+      "bbox": [
+       0.05,
+       0.86,
+       0.95,
+       0.92
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 113,
+    "t": 36,
+    "action_type": "terminal",
+    "risk_score": 80,
+    "risk_level": "critical",
+    "description": "Windows Defender real-time monitoring disabled via Set-MpPreference -DisableRealtimeMonitoring.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Windows PowerShell",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.08,
+       0.95,
+       0.14
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Console output",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.15,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Command prompt",
+      "interactivity": true,
+      "bbox": [
+       0.05,
+       0.86,
+       0.95,
+       0.92
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 114,
+    "t": 39,
+    "action_type": "file_transfer",
+    "risk_score": 85,
+    "risk_level": "critical",
+    "description": "bcp exports dbo.PaymentCards to C:\\Users\\Public\\export.csv.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "File Explorer",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Path",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.9,
+       0.12
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "File: export",
+      "interactivity": false,
+      "bbox": [
+       0.28,
+       0.25,
+       0.4,
+       0.42
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Upload",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Transfer progress",
+      "interactivity": false,
+      "bbox": [
+       0.28,
+       0.6,
+       0.9,
+       0.7
+      ]
+     }
+    ]
+   },
+   {
+    "id": 115,
+    "t": 42,
+    "action_type": "file_transfer",
+    "risk_score": 92,
+    "risk_level": "critical",
+    "description": "export.csv compressed into a password-protected export.zip using 7-Zip.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "File Explorer",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Path",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.9,
+       0.12
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "File: export",
+      "interactivity": false,
+      "bbox": [
+       0.28,
+       0.25,
+       0.4,
+       0.42
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Upload",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Transfer progress",
+      "interactivity": false,
+      "bbox": [
+       0.28,
+       0.6,
+       0.9,
+       0.7
+      ]
+     }
+    ]
+   },
+   {
+    "id": 116,
+    "t": 45,
+    "action_type": "file_transfer",
+    "risk_score": 95,
+    "risk_level": "critical",
+    "description": "Vendor opens a personal OneDrive in the browser and uploads export.zip to external cloud storage.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "File Explorer",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Path",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.9,
+       0.12
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "File: export",
+      "interactivity": false,
+      "bbox": [
+       0.28,
+       0.25,
+       0.4,
+       0.42
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Upload",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Transfer progress",
+      "interactivity": false,
+      "bbox": [
+       0.28,
+       0.6,
+       0.9,
+       0.7
+      ]
+     }
+    ]
+   },
+   {
+    "id": 117,
+    "t": 48,
+    "action_type": "browsing",
+    "risk_score": 90,
+    "risk_level": "critical",
+    "description": "Upload reaches 100%; an anyone-with-the-link share URL is generated.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Microsoft Edge",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Address bar",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.8,
+       0.12
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Navigation menu",
+      "interactivity": true,
+      "bbox": [
+       0.02,
+       0.15,
+       0.2,
+       0.9
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Page content",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.2,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Submit",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     }
+    ]
+   },
+   {
+    "id": 118,
+    "t": 51,
+    "action_type": "terminal",
+    "risk_score": 88,
+    "risk_level": "critical",
+    "description": "Security event log cleared with wevtutil cl Security.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Windows PowerShell",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.08,
+       0.95,
+       0.14
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Console output",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.15,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Command prompt",
+      "interactivity": true,
+      "bbox": [
+       0.05,
+       0.86,
+       0.95,
+       0.92
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 119,
+    "t": 54,
+    "action_type": "terminal",
+    "risk_score": 84,
+    "risk_level": "critical",
+    "description": "export.csv deleted and cipher /w run to wipe free space (anti-forensics).",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Windows PowerShell",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.08,
+       0.95,
+       0.14
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Console output",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.15,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Command prompt",
+      "interactivity": true,
+      "bbox": [
+       0.05,
+       0.86,
+       0.95,
+       0.92
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 120,
+    "t": 57,
+    "action_type": "admin_console",
+    "risk_score": 55,
+    "risk_level": "high",
+    "description": "SSMS reopened to check SQL Agent job history for backup jobs.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "SQL Server Management Studio",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Object Explorer",
+      "interactivity": true,
+      "bbox": [
+       0.01,
+       0.08,
+       0.22,
+       0.9
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Query editor",
+      "interactivity": true,
+      "bbox": [
+       0.24,
+       0.1,
+       0.99,
+       0.45
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Results grid",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.48,
+       0.99,
+       0.9
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Execute",
+      "interactivity": true,
+      "bbox": [
+       0.25,
+       0.06,
+       0.32,
+       0.095
+      ]
+     }
+    ]
+   },
+   {
+    "id": 121,
+    "t": 60,
+    "action_type": "browsing",
+    "risk_score": 40,
+    "risk_level": "medium",
+    "description": "Vendor returns to ticket CHG-48213 and marks the work 'Completed - no issues'.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Microsoft Edge",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Address bar",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.8,
+       0.12
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Navigation menu",
+      "interactivity": true,
+      "bbox": [
+       0.02,
+       0.15,
+       0.2,
+       0.9
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Page content",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.2,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Submit",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     }
+    ]
+   },
+   {
+    "id": 122,
+    "t": 63,
+    "action_type": "idle",
+    "risk_score": 15,
+    "risk_level": "low",
+    "description": "Session idle; desktop with no active windows.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "icon",
+      "content": "Recycle Bin",
+      "interactivity": false,
+      "bbox": [
+       0.02,
+       0.03,
+       0.08,
+       0.13
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Clock",
+      "interactivity": false,
+      "bbox": [
+       0.92,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 123,
+    "t": 66,
+    "action_type": "idle",
+    "risk_score": 8,
+    "risk_level": "low",
+    "description": "Session idle; screen unchanged.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "icon",
+      "content": "Recycle Bin",
+      "interactivity": false,
+      "bbox": [
+       0.02,
+       0.03,
+       0.08,
+       0.13
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Clock",
+      "interactivity": false,
+      "bbox": [
+       0.92,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 124,
+    "t": 69,
+    "action_type": "login",
+    "risk_score": 10,
+    "risk_level": "low",
+    "description": "Vendor signs out of the Windows session.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Remote Desktop Connection",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Username",
+      "interactivity": true,
+      "bbox": [
+       0.35,
+       0.35,
+       0.65,
+       0.42
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Password",
+      "interactivity": true,
+      "bbox": [
+       0.35,
+       0.45,
+       0.65,
+       0.52
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Sign in",
+      "interactivity": true,
+      "bbox": [
+       0.42,
+       0.56,
+       0.58,
+       0.63
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 125,
+    "t": 72,
+    "action_type": "idle",
+    "risk_score": 5,
+    "risk_level": "low",
+    "description": "RDP disconnect dialog; session closes.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "icon",
+      "content": "Recycle Bin",
+      "interactivity": false,
+      "bbox": [
+       0.02,
+       0.03,
+       0.08,
+       0.13
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Clock",
+      "interactivity": false,
+      "bbox": [
+       0.92,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": 2,
+  "filename": "vendor_routine_patching.mp4",
+  "duration_s": 75,
+  "interval_s": 3,
+  "summary": "**Risk: LOW.** Routine monthly patching on WSUS-01 matched change ticket CHG-48190. Only approved Microsoft updates were approved and validated; evidence was filed to the sanctioned SharePoint library. No anomalies observed.",
+  "risk_score": 17,
+  "security_level": "low",
+  "created_at": "2025-01-15T09:30:02Z",
+  "has_clip": false,
+  "frames": [
+   {
+    "id": 201,
+    "t": 0,
+    "action_type": "login",
+    "risk_score": 4,
+    "risk_level": "low",
+    "description": "Vendor connects to patch-mgmt server WSUS-01 with a named service account; MFA approved.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Remote Desktop Connection",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Username",
+      "interactivity": true,
+      "bbox": [
+       0.35,
+       0.35,
+       0.65,
+       0.42
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Password",
+      "interactivity": true,
+      "bbox": [
+       0.35,
+       0.45,
+       0.65,
+       0.52
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Sign in",
+      "interactivity": true,
+      "bbox": [
+       0.42,
+       0.56,
+       0.58,
+       0.63
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 202,
+    "t": 3,
+    "action_type": "login",
+    "risk_score": 5,
+    "risk_level": "low",
+    "description": "Desktop loads; Server Manager opens automatically.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Remote Desktop Connection",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Username",
+      "interactivity": true,
+      "bbox": [
+       0.35,
+       0.35,
+       0.65,
+       0.42
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Password",
+      "interactivity": true,
+      "bbox": [
+       0.35,
+       0.45,
+       0.65,
+       0.52
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Sign in",
+      "interactivity": true,
+      "bbox": [
+       0.42,
+       0.56,
+       0.58,
+       0.63
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 203,
+    "t": 6,
+    "action_type": "browsing",
+    "risk_score": 8,
+    "risk_level": "low",
+    "description": "Vendor opens change ticket CHG-48190 (monthly OS patching) in Edge.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Microsoft Edge",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Address bar",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.8,
+       0.12
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Navigation menu",
+      "interactivity": true,
+      "bbox": [
+       0.02,
+       0.15,
+       0.2,
+       0.9
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Page content",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.2,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Submit",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     }
+    ]
+   },
+   {
+    "id": 204,
+    "t": 9,
+    "action_type": "admin_console",
+    "risk_score": 12,
+    "risk_level": "low",
+    "description": "Windows Server Update Services console opened; Updates > Critical Updates listed.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "SQL Server Management Studio",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Object Explorer",
+      "interactivity": true,
+      "bbox": [
+       0.01,
+       0.08,
+       0.22,
+       0.9
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Query editor",
+      "interactivity": true,
+      "bbox": [
+       0.24,
+       0.1,
+       0.99,
+       0.45
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Results grid",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.48,
+       0.99,
+       0.9
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Execute",
+      "interactivity": true,
+      "bbox": [
+       0.25,
+       0.06,
+       0.32,
+       0.095
+      ]
+     }
+    ]
+   },
+   {
+    "id": 205,
+    "t": 12,
+    "action_type": "admin_console",
+    "risk_score": 14,
+    "risk_level": "low",
+    "description": "KB5034441 and KB5034439 selected for approval to the Production-Servers group.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "SQL Server Management Studio",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Object Explorer",
+      "interactivity": true,
+      "bbox": [
+       0.01,
+       0.08,
+       0.22,
+       0.9
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Query editor",
+      "interactivity": true,
+      "bbox": [
+       0.24,
+       0.1,
+       0.99,
+       0.45
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Results grid",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.48,
+       0.99,
+       0.9
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Execute",
+      "interactivity": true,
+      "bbox": [
+       0.25,
+       0.06,
+       0.32,
+       0.095
+      ]
+     }
+    ]
+   },
+   {
+    "id": 206,
+    "t": 15,
+    "action_type": "admin_console",
+    "risk_score": 16,
+    "risk_level": "low",
+    "description": "Approval dialog confirms install deadline for Saturday 02:00, inside the change window.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "SQL Server Management Studio",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Object Explorer",
+      "interactivity": true,
+      "bbox": [
+       0.01,
+       0.08,
+       0.22,
+       0.9
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Query editor",
+      "interactivity": true,
+      "bbox": [
+       0.24,
+       0.1,
+       0.99,
+       0.45
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Results grid",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.48,
+       0.99,
+       0.9
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Execute",
+      "interactivity": true,
+      "bbox": [
+       0.25,
+       0.06,
+       0.32,
+       0.095
+      ]
+     }
+    ]
+   },
+   {
+    "id": 207,
+    "t": 18,
+    "action_type": "admin_console",
+    "risk_score": 14,
+    "risk_level": "low",
+    "description": "Update status report shows 42 of 45 servers compliant.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "SQL Server Management Studio",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Object Explorer",
+      "interactivity": true,
+      "bbox": [
+       0.01,
+       0.08,
+       0.22,
+       0.9
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Query editor",
+      "interactivity": true,
+      "bbox": [
+       0.24,
+       0.1,
+       0.99,
+       0.45
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Results grid",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.48,
+       0.99,
+       0.9
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Execute",
+      "interactivity": true,
+      "bbox": [
+       0.25,
+       0.06,
+       0.32,
+       0.095
+      ]
+     }
+    ]
+   },
+   {
+    "id": 208,
+    "t": 21,
+    "action_type": "terminal",
+    "risk_score": 18,
+    "risk_level": "low",
+    "description": "PowerShell: Get-HotFix | Sort InstalledOn -Desc | Select -First 5 on WSUS-01.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Windows PowerShell",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.08,
+       0.95,
+       0.14
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Console output",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.15,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Command prompt",
+      "interactivity": true,
+      "bbox": [
+       0.05,
+       0.86,
+       0.95,
+       0.92
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 209,
+    "t": 24,
+    "action_type": "terminal",
+    "risk_score": 20,
+    "risk_level": "low",
+    "description": "PowerShell: Invoke-Command to restart the Windows Update service on three lagging servers.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Windows PowerShell",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.08,
+       0.95,
+       0.14
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Console output",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.15,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Command prompt",
+      "interactivity": true,
+      "bbox": [
+       0.05,
+       0.86,
+       0.95,
+       0.92
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 210,
+    "t": 27,
+    "action_type": "terminal",
+    "risk_score": 18,
+    "risk_level": "low",
+    "description": "Command completes without errors; services report Running.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Windows PowerShell",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.08,
+       0.95,
+       0.14
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Console output",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.15,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Command prompt",
+      "interactivity": true,
+      "bbox": [
+       0.05,
+       0.86,
+       0.95,
+       0.92
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 211,
+    "t": 30,
+    "action_type": "admin_console",
+    "risk_score": 12,
+    "risk_level": "low",
+    "description": "WSUS report refreshed; 45 of 45 servers pending install.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "SQL Server Management Studio",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Object Explorer",
+      "interactivity": true,
+      "bbox": [
+       0.01,
+       0.08,
+       0.22,
+       0.9
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Query editor",
+      "interactivity": true,
+      "bbox": [
+       0.24,
+       0.1,
+       0.99,
+       0.45
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Results grid",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.48,
+       0.99,
+       0.9
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Execute",
+      "interactivity": true,
+      "bbox": [
+       0.25,
+       0.06,
+       0.32,
+       0.095
+      ]
+     }
+    ]
+   },
+   {
+    "id": 212,
+    "t": 33,
+    "action_type": "browsing",
+    "risk_score": 8,
+    "risk_level": "low",
+    "description": "Vendor opens the internal runbook wiki page for post-patch validation.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Microsoft Edge",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Address bar",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.8,
+       0.12
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Navigation menu",
+      "interactivity": true,
+      "bbox": [
+       0.02,
+       0.15,
+       0.2,
+       0.9
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Page content",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.2,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Submit",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     }
+    ]
+   },
+   {
+    "id": 213,
+    "t": 36,
+    "action_type": "browsing",
+    "risk_score": 6,
+    "risk_level": "low",
+    "description": "Reads checklist items; no external sites accessed.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Microsoft Edge",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Address bar",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.8,
+       0.12
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Navigation menu",
+      "interactivity": true,
+      "bbox": [
+       0.02,
+       0.15,
+       0.2,
+       0.9
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Page content",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.2,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Submit",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     }
+    ]
+   },
+   {
+    "id": 214,
+    "t": 39,
+    "action_type": "terminal",
+    "risk_score": 14,
+    "risk_level": "low",
+    "description": "Test-NetConnection to the monitoring server; ping succeeds.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Windows PowerShell",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.08,
+       0.95,
+       0.14
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Console output",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.15,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Command prompt",
+      "interactivity": true,
+      "bbox": [
+       0.05,
+       0.86,
+       0.95,
+       0.92
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 215,
+    "t": 42,
+    "action_type": "admin_console",
+    "risk_score": 10,
+    "risk_level": "low",
+    "description": "Event Viewer > Windows Update Client log reviewed; no failures.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "SQL Server Management Studio",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Object Explorer",
+      "interactivity": true,
+      "bbox": [
+       0.01,
+       0.08,
+       0.22,
+       0.9
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Query editor",
+      "interactivity": true,
+      "bbox": [
+       0.24,
+       0.1,
+       0.99,
+       0.45
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Results grid",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.48,
+       0.99,
+       0.9
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Execute",
+      "interactivity": true,
+      "bbox": [
+       0.25,
+       0.06,
+       0.32,
+       0.095
+      ]
+     }
+    ]
+   },
+   {
+    "id": 216,
+    "t": 45,
+    "action_type": "browsing",
+    "risk_score": 8,
+    "risk_level": "low",
+    "description": "Ticket CHG-48190 updated with patch list and marked 'Implemented'.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Microsoft Edge",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Address bar",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.8,
+       0.12
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Navigation menu",
+      "interactivity": true,
+      "bbox": [
+       0.02,
+       0.15,
+       0.2,
+       0.9
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Page content",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.2,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Submit",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     }
+    ]
+   },
+   {
+    "id": 217,
+    "t": 48,
+    "action_type": "idle",
+    "risk_score": 4,
+    "risk_level": "low",
+    "description": "Session idle; Server Manager dashboard visible.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "icon",
+      "content": "Recycle Bin",
+      "interactivity": false,
+      "bbox": [
+       0.02,
+       0.03,
+       0.08,
+       0.13
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Clock",
+      "interactivity": false,
+      "bbox": [
+       0.92,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 218,
+    "t": 51,
+    "action_type": "idle",
+    "risk_score": 3,
+    "risk_level": "low",
+    "description": "Session idle.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "icon",
+      "content": "Recycle Bin",
+      "interactivity": false,
+      "bbox": [
+       0.02,
+       0.03,
+       0.08,
+       0.13
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Clock",
+      "interactivity": false,
+      "bbox": [
+       0.92,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 219,
+    "t": 54,
+    "action_type": "browsing",
+    "risk_score": 6,
+    "risk_level": "low",
+    "description": "Vendor attaches the WSUS compliance report PDF to the ticket.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Microsoft Edge",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Address bar",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.8,
+       0.12
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Navigation menu",
+      "interactivity": true,
+      "bbox": [
+       0.02,
+       0.15,
+       0.2,
+       0.9
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Page content",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.2,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Submit",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     }
+    ]
+   },
+   {
+    "id": 220,
+    "t": 57,
+    "action_type": "file_transfer",
+    "risk_score": 22,
+    "risk_level": "low",
+    "description": "Compliance report copied to the approved SharePoint change-evidence library.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "File Explorer",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Path",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.9,
+       0.12
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "File: export",
+      "interactivity": false,
+      "bbox": [
+       0.28,
+       0.25,
+       0.4,
+       0.42
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Upload",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Transfer progress",
+      "interactivity": false,
+      "bbox": [
+       0.28,
+       0.6,
+       0.9,
+       0.7
+      ]
+     }
+    ]
+   },
+   {
+    "id": 221,
+    "t": 60,
+    "action_type": "browsing",
+    "risk_score": 8,
+    "risk_level": "low",
+    "description": "Ticket status confirmed as updated.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Microsoft Edge",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Address bar",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.8,
+       0.12
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Navigation menu",
+      "interactivity": true,
+      "bbox": [
+       0.02,
+       0.15,
+       0.2,
+       0.9
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Page content",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.2,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Submit",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     }
+    ]
+   },
+   {
+    "id": 222,
+    "t": 63,
+    "action_type": "idle",
+    "risk_score": 3,
+    "risk_level": "low",
+    "description": "Session idle.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "icon",
+      "content": "Recycle Bin",
+      "interactivity": false,
+      "bbox": [
+       0.02,
+       0.03,
+       0.08,
+       0.13
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Clock",
+      "interactivity": false,
+      "bbox": [
+       0.92,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 223,
+    "t": 66,
+    "action_type": "login",
+    "risk_score": 5,
+    "risk_level": "low",
+    "description": "Vendor signs out of the session.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Remote Desktop Connection",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Username",
+      "interactivity": true,
+      "bbox": [
+       0.35,
+       0.35,
+       0.65,
+       0.42
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Password",
+      "interactivity": true,
+      "bbox": [
+       0.35,
+       0.45,
+       0.65,
+       0.52
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Sign in",
+      "interactivity": true,
+      "bbox": [
+       0.42,
+       0.56,
+       0.58,
+       0.63
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 224,
+    "t": 69,
+    "action_type": "idle",
+    "risk_score": 3,
+    "risk_level": "low",
+    "description": "RDP disconnect dialog.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "icon",
+      "content": "Recycle Bin",
+      "interactivity": false,
+      "bbox": [
+       0.02,
+       0.03,
+       0.08,
+       0.13
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Clock",
+      "interactivity": false,
+      "bbox": [
+       0.92,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 225,
+    "t": 72,
+    "action_type": "idle",
+    "risk_score": 2,
+    "risk_level": "low",
+    "description": "Session ended.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "icon",
+      "content": "Recycle Bin",
+      "interactivity": false,
+      "bbox": [
+       0.02,
+       0.03,
+       0.08,
+       0.13
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Clock",
+      "interactivity": false,
+      "bbox": [
+       0.92,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": 3,
+  "filename": "contractor_mixed_session.mp4",
+  "duration_s": 75,
+  "interval_s": 3,
+  "summary": "**Risk: MEDIUM.** A contractor mostly performed legitimate read-only BI analysis, but also downloaded a sales workbook and sent it via personal webmail, browsed a file-sharing site and installed packages from an unapproved index. Needs a manager follow-up on the external email.",
+  "risk_score": 48,
+  "security_level": "medium",
+  "created_at": "2025-01-16T16:45:40Z",
+  "has_clip": false,
+  "frames": [
+   {
+    "id": 301,
+    "t": 0,
+    "action_type": "login",
+    "risk_score": 8,
+    "risk_level": "low",
+    "description": "Contractor connects to the shared analytics VM using a named contractor account.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Remote Desktop Connection",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Username",
+      "interactivity": true,
+      "bbox": [
+       0.35,
+       0.35,
+       0.65,
+       0.42
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Password",
+      "interactivity": true,
+      "bbox": [
+       0.35,
+       0.45,
+       0.65,
+       0.52
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Sign in",
+      "interactivity": true,
+      "bbox": [
+       0.42,
+       0.56,
+       0.58,
+       0.63
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 302,
+    "t": 3,
+    "action_type": "login",
+    "risk_score": 10,
+    "risk_level": "low",
+    "description": "Windows desktop loads; Outlook and Teams start automatically.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Remote Desktop Connection",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Username",
+      "interactivity": true,
+      "bbox": [
+       0.35,
+       0.35,
+       0.65,
+       0.42
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Password",
+      "interactivity": true,
+      "bbox": [
+       0.35,
+       0.45,
+       0.65,
+       0.52
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Sign in",
+      "interactivity": true,
+      "bbox": [
+       0.42,
+       0.56,
+       0.58,
+       0.63
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 303,
+    "t": 6,
+    "action_type": "browsing",
+    "risk_score": 14,
+    "risk_level": "low",
+    "description": "Contractor opens the internal wiki and the BI dashboard documentation.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Microsoft Edge",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Address bar",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.8,
+       0.12
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Navigation menu",
+      "interactivity": true,
+      "bbox": [
+       0.02,
+       0.15,
+       0.2,
+       0.9
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Page content",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.2,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Submit",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     }
+    ]
+   },
+   {
+    "id": 304,
+    "t": 9,
+    "action_type": "browsing",
+    "risk_score": 18,
+    "risk_level": "low",
+    "description": "Power BI service opened; Sales Overview report loaded.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Microsoft Edge",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Address bar",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.8,
+       0.12
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Navigation menu",
+      "interactivity": true,
+      "bbox": [
+       0.02,
+       0.15,
+       0.2,
+       0.9
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Page content",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.2,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Submit",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     }
+    ]
+   },
+   {
+    "id": 305,
+    "t": 12,
+    "action_type": "admin_console",
+    "risk_score": 25,
+    "risk_level": "low",
+    "description": "Azure Data Studio connected to analytics-sql with a read-only login.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "SQL Server Management Studio",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Object Explorer",
+      "interactivity": true,
+      "bbox": [
+       0.01,
+       0.08,
+       0.22,
+       0.9
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Query editor",
+      "interactivity": true,
+      "bbox": [
+       0.24,
+       0.1,
+       0.99,
+       0.45
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Results grid",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.48,
+       0.99,
+       0.9
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Execute",
+      "interactivity": true,
+      "bbox": [
+       0.25,
+       0.06,
+       0.32,
+       0.095
+      ]
+     }
+    ]
+   },
+   {
+    "id": 306,
+    "t": 15,
+    "action_type": "admin_console",
+    "risk_score": 30,
+    "risk_level": "medium",
+    "description": "Query: SELECT region, SUM(revenue) FROM sales_summary GROUP BY region.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "SQL Server Management Studio",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Object Explorer",
+      "interactivity": true,
+      "bbox": [
+       0.01,
+       0.08,
+       0.22,
+       0.9
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Query editor",
+      "interactivity": true,
+      "bbox": [
+       0.24,
+       0.1,
+       0.99,
+       0.45
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Results grid",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.48,
+       0.99,
+       0.9
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Execute",
+      "interactivity": true,
+      "bbox": [
+       0.25,
+       0.06,
+       0.32,
+       0.095
+      ]
+     }
+    ]
+   },
+   {
+    "id": 307,
+    "t": 18,
+    "action_type": "admin_console",
+    "risk_score": 28,
+    "risk_level": "low",
+    "description": "Results rendered as a bar chart; no sensitive columns present.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "SQL Server Management Studio",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Object Explorer",
+      "interactivity": true,
+      "bbox": [
+       0.01,
+       0.08,
+       0.22,
+       0.9
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Query editor",
+      "interactivity": true,
+      "bbox": [
+       0.24,
+       0.1,
+       0.99,
+       0.45
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Results grid",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.48,
+       0.99,
+       0.9
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Execute",
+      "interactivity": true,
+      "bbox": [
+       0.25,
+       0.06,
+       0.32,
+       0.095
+      ]
+     }
+    ]
+   },
+   {
+    "id": 308,
+    "t": 21,
+    "action_type": "browsing",
+    "risk_score": 32,
+    "risk_level": "medium",
+    "description": "Contractor opens a personal webmail tab alongside the corporate dashboard.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Microsoft Edge",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Address bar",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.8,
+       0.12
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Navigation menu",
+      "interactivity": true,
+      "bbox": [
+       0.02,
+       0.15,
+       0.2,
+       0.9
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Page content",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.2,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Submit",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     }
+    ]
+   },
+   {
+    "id": 309,
+    "t": 24,
+    "action_type": "browsing",
+    "risk_score": 36,
+    "risk_level": "medium",
+    "description": "Webmail inbox visible; a draft with an attachment named sales_q3.xlsx is open.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Microsoft Edge",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Address bar",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.8,
+       0.12
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Navigation menu",
+      "interactivity": true,
+      "bbox": [
+       0.02,
+       0.15,
+       0.2,
+       0.9
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Page content",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.2,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Submit",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     }
+    ]
+   },
+   {
+    "id": 310,
+    "t": 27,
+    "action_type": "file_transfer",
+    "risk_score": 48,
+    "risk_level": "medium",
+    "description": "sales_q3.xlsx downloaded from the BI portal to the Downloads folder.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "File Explorer",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Path",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.9,
+       0.12
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "File: export",
+      "interactivity": false,
+      "bbox": [
+       0.28,
+       0.25,
+       0.4,
+       0.42
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Upload",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Transfer progress",
+      "interactivity": false,
+      "bbox": [
+       0.28,
+       0.6,
+       0.9,
+       0.7
+      ]
+     }
+    ]
+   },
+   {
+    "id": 311,
+    "t": 30,
+    "action_type": "file_transfer",
+    "risk_score": 55,
+    "risk_level": "high",
+    "description": "File attached to the personal webmail draft (not a corporate mailbox).",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "File Explorer",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Path",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.9,
+       0.12
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "File: export",
+      "interactivity": false,
+      "bbox": [
+       0.28,
+       0.25,
+       0.4,
+       0.42
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Upload",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Transfer progress",
+      "interactivity": false,
+      "bbox": [
+       0.28,
+       0.6,
+       0.9,
+       0.7
+      ]
+     }
+    ]
+   },
+   {
+    "id": 312,
+    "t": 33,
+    "action_type": "file_transfer",
+    "risk_score": 62,
+    "risk_level": "high",
+    "description": "Webmail draft sent with sales_q3.xlsx to an external address.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "File Explorer",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Path",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.9,
+       0.12
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "File: export",
+      "interactivity": false,
+      "bbox": [
+       0.28,
+       0.25,
+       0.4,
+       0.42
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Upload",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Transfer progress",
+      "interactivity": false,
+      "bbox": [
+       0.28,
+       0.6,
+       0.9,
+       0.7
+      ]
+     }
+    ]
+   },
+   {
+    "id": 313,
+    "t": 36,
+    "action_type": "browsing",
+    "risk_score": 45,
+    "risk_level": "medium",
+    "description": "Contractor opens a file-sharing website and browses the upload page.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Microsoft Edge",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Address bar",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.8,
+       0.12
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Navigation menu",
+      "interactivity": true,
+      "bbox": [
+       0.02,
+       0.15,
+       0.2,
+       0.9
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Page content",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.2,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Submit",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     }
+    ]
+   },
+   {
+    "id": 314,
+    "t": 39,
+    "action_type": "browsing",
+    "risk_score": 38,
+    "risk_level": "medium",
+    "description": "Closes the file-sharing site without uploading.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Microsoft Edge",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Address bar",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.8,
+       0.12
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Navigation menu",
+      "interactivity": true,
+      "bbox": [
+       0.02,
+       0.15,
+       0.2,
+       0.9
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Page content",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.2,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Submit",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     }
+    ]
+   },
+   {
+    "id": 315,
+    "t": 42,
+    "action_type": "admin_console",
+    "risk_score": 30,
+    "risk_level": "medium",
+    "description": "Returns to Azure Data Studio; runs a second read-only query on sales_summary.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "SQL Server Management Studio",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Object Explorer",
+      "interactivity": true,
+      "bbox": [
+       0.01,
+       0.08,
+       0.22,
+       0.9
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Query editor",
+      "interactivity": true,
+      "bbox": [
+       0.24,
+       0.1,
+       0.99,
+       0.45
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Results grid",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.48,
+       0.99,
+       0.9
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Execute",
+      "interactivity": true,
+      "bbox": [
+       0.25,
+       0.06,
+       0.32,
+       0.095
+      ]
+     }
+    ]
+   },
+   {
+    "id": 316,
+    "t": 45,
+    "action_type": "terminal",
+    "risk_score": 35,
+    "risk_level": "medium",
+    "description": "Windows Terminal: pip install pandas openpyxl run from an unapproved package index.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Windows PowerShell",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.08,
+       0.95,
+       0.14
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Console output",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.15,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Command prompt",
+      "interactivity": true,
+      "bbox": [
+       0.05,
+       0.86,
+       0.95,
+       0.92
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 317,
+    "t": 48,
+    "action_type": "terminal",
+    "risk_score": 40,
+    "risk_level": "medium",
+    "description": "Python script executed to aggregate query results locally.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Windows PowerShell",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.08,
+       0.95,
+       0.14
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Console output",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.15,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Command prompt",
+      "interactivity": true,
+      "bbox": [
+       0.05,
+       0.86,
+       0.95,
+       0.92
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 318,
+    "t": 51,
+    "action_type": "terminal",
+    "risk_score": 28,
+    "risk_level": "low",
+    "description": "Script output saved to C:\\Users\\contractor\\Documents\\agg.csv.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Windows PowerShell",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.08,
+       0.95,
+       0.14
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Console output",
+      "interactivity": false,
+      "bbox": [
+       0.05,
+       0.15,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Command prompt",
+      "interactivity": true,
+      "bbox": [
+       0.05,
+       0.86,
+       0.95,
+       0.92
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 319,
+    "t": 54,
+    "action_type": "browsing",
+    "risk_score": 22,
+    "risk_level": "low",
+    "description": "Contractor reads internal documentation on the data catalog.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Microsoft Edge",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Address bar",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.8,
+       0.12
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Navigation menu",
+      "interactivity": true,
+      "bbox": [
+       0.02,
+       0.15,
+       0.2,
+       0.9
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Page content",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.2,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Submit",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     }
+    ]
+   },
+   {
+    "id": 320,
+    "t": 57,
+    "action_type": "browsing",
+    "risk_score": 18,
+    "risk_level": "low",
+    "description": "Teams chat window opened; discussing report requirements with an employee.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Microsoft Edge",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Address bar",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.8,
+       0.12
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Navigation menu",
+      "interactivity": true,
+      "bbox": [
+       0.02,
+       0.15,
+       0.2,
+       0.9
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Page content",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.2,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Submit",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     }
+    ]
+   },
+   {
+    "id": 321,
+    "t": 60,
+    "action_type": "idle",
+    "risk_score": 12,
+    "risk_level": "low",
+    "description": "Session idle; no activity.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "icon",
+      "content": "Recycle Bin",
+      "interactivity": false,
+      "bbox": [
+       0.02,
+       0.03,
+       0.08,
+       0.13
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Clock",
+      "interactivity": false,
+      "bbox": [
+       0.92,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 322,
+    "t": 63,
+    "action_type": "idle",
+    "risk_score": 10,
+    "risk_level": "low",
+    "description": "Session idle.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "icon",
+      "content": "Recycle Bin",
+      "interactivity": false,
+      "bbox": [
+       0.02,
+       0.03,
+       0.08,
+       0.13
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Clock",
+      "interactivity": false,
+      "bbox": [
+       0.92,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 323,
+    "t": 66,
+    "action_type": "browsing",
+    "risk_score": 14,
+    "risk_level": "low",
+    "description": "Contractor reviews the BI dashboard one last time.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Microsoft Edge",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Address bar",
+      "interactivity": true,
+      "bbox": [
+       0.1,
+       0.07,
+       0.8,
+       0.12
+      ]
+     },
+     {
+      "type": "menu",
+      "content": "Navigation menu",
+      "interactivity": true,
+      "bbox": [
+       0.02,
+       0.15,
+       0.2,
+       0.9
+      ]
+     },
+     {
+      "type": "text",
+      "content": "Page content",
+      "interactivity": false,
+      "bbox": [
+       0.24,
+       0.2,
+       0.95,
+       0.85
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Submit",
+      "interactivity": true,
+      "bbox": [
+       0.8,
+       0.8,
+       0.94,
+       0.88
+      ]
+     }
+    ]
+   },
+   {
+    "id": 324,
+    "t": 69,
+    "action_type": "login",
+    "risk_score": 8,
+    "risk_level": "low",
+    "description": "Contractor signs out.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "title_bar",
+      "content": "Remote Desktop Connection",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0,
+       1,
+       0.05
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Username",
+      "interactivity": true,
+      "bbox": [
+       0.35,
+       0.35,
+       0.65,
+       0.42
+      ]
+     },
+     {
+      "type": "text_field",
+      "content": "Password",
+      "interactivity": true,
+      "bbox": [
+       0.35,
+       0.45,
+       0.65,
+       0.52
+      ]
+     },
+     {
+      "type": "button",
+      "content": "Sign in",
+      "interactivity": true,
+      "bbox": [
+       0.42,
+       0.56,
+       0.58,
+       0.63
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   },
+   {
+    "id": 325,
+    "t": 72,
+    "action_type": "idle",
+    "risk_score": 4,
+    "risk_level": "low",
+    "description": "RDP disconnect dialog.",
+    "width": 1280,
+    "height": 720,
+    "elements": [
+     {
+      "type": "icon",
+      "content": "Recycle Bin",
+      "interactivity": false,
+      "bbox": [
+       0.02,
+       0.03,
+       0.08,
+       0.13
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Taskbar",
+      "interactivity": false,
+      "bbox": [
+       0,
+       0.95,
+       1,
+       1
+      ]
+     },
+     {
+      "type": "icon",
+      "content": "Clock",
+      "interactivity": false,
+      "bbox": [
+       0.92,
+       0.95,
+       1,
+       1
+      ]
+     }
+    ]
+   }
+  ]
+ }
+]

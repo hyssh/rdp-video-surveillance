@@ -9,17 +9,20 @@ import uuid
 import requests
 from typing import Dict, Any, Optional
 import json
+import mimetypes
 import re
 from contextlib import asynccontextmanager
 from fastapi.exceptions import RequestValidationError
 from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, Query
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, Response
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from azure.storage.blob import BlobServiceClient, ContentSettings
 from postgresql import (
     insert_video, insert_frames, update_frames_with_embeddings, get_frames_by_video_id,
     update_video_with_security_review, list_videos, get_video_detail, list_frames,
     search_similar_frames, create_job, update_job, get_job, fail_interrupted_jobs,
+    update_video_metrics, get_stats, update_frames_analysis, get_frame, list_timeline_frames, get_video_by_id,
 )
 # from agents.image_analyzer.image_analyzer_agent import get_image_analyzer_agent, image_analyzer_agent_run
 from agents.security_reviewer.security_reviewer_agent import get_or_create_chat_completion_agent, security_reviewer_agent_run
@@ -29,10 +32,12 @@ from agents.chat_completion.chat_completion_agent import (
 from semantic_kernel.connectors.ai.open_ai.settings.azure_open_ai_settings import AzureOpenAISettings
 from semantic_kernel.connectors.ai.open_ai import AzureTextEmbedding
 from retry_utils import retry_async
+import media_utils
+from analysis_utils import parse_risk, parse_frame_analysis, elements_from_omniparser, image_size
 from errors import ApiError, api_error_response, api_errors, classify_exception, require_env, validation_error_response
 from models import (
-    AskRequest, AskResponse, ErrorResponse, FrameList, IngestAccepted, IngestResult,
-    JobStatus, VideoDetail, VideoList,
+    AskRequest, AskResponse, ErrorResponse, FrameDetail, FrameElements, FrameList, IngestAccepted, IngestResult,
+    JobStatus, Stats, Timeline, VideoDetail, VideoList,
 )
 
 
@@ -55,6 +60,18 @@ async def lifespan(_app):
 orchestrator = FastAPI(lifespan=lifespan)
 orchestrator.add_exception_handler(ApiError, api_error_response)
 orchestrator.add_exception_handler(RequestValidationError, validation_error_response)
+
+# Vite dev server + any extra origins (comma separated); same-origin requests need no CORS
+_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"] + [
+    o.strip() for o in os.getenv("CORS_ALLOW_ORIGINS", "").split(",") if o.strip()
+]
+orchestrator.add_middleware(
+    CORSMiddleware,
+    allow_origins=_CORS_ORIGINS,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Content-Range", "Accept-Ranges", "Content-Length"],
+)
 
 ERROR_RESPONSES = {
     code: {"model": ErrorResponse}
@@ -83,6 +100,15 @@ HEALTHCHECK_TIMEOUT = (
 EMBEDDING_BATCH_SIZE = max(1, int(os.getenv("EMBEDDING_BATCH_SIZE", "16")))
 # Ingestion jobs running the pipeline at once; extra jobs wait in status "queued"
 JOB_SEMAPHORE = asyncio.Semaphore(max(1, int(os.getenv("MAX_CONCURRENT_JOBS", "2"))))
+# Concurrent ffmpeg clip extractions
+CLIP_SEMAPHORE = asyncio.Semaphore(max(1, int(os.getenv("MAX_CONCURRENT_CLIPS", "2"))))
+FRAME_INTERVAL_S = 3  # split_video samples one frame every 3 seconds
+DEMO_CONTAINER = "demo-local"  # frames/videos whose assets live under static/demo_assets (no Azure)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+APP_DIR = os.path.join(STATIC_DIR, "app")
+DEMO_ASSETS_DIR = os.path.join(STATIC_DIR, "demo_assets")
+_SOURCE_LOCKS: Dict[int, asyncio.Lock] = {}
 
 
 def omniparser_base_url() -> str:
@@ -94,11 +120,38 @@ def read_root():
     return {"message": "Orchestrator API is running", "ui": "/ui", "docs": "/docs"}
 
 
+def _safe_join(root: str, relative: str) -> Optional[str]:
+    """Join relative under root, refusing anything that resolves outside it."""
+    root_real = os.path.realpath(root)
+    path = os.path.realpath(os.path.join(root_real, relative))
+    return path if path.startswith(root_real + os.sep) else None
+
+
 @orchestrator.get("/ui", include_in_schema=False)
-async def auditor_ui():
-    """Serve the self-contained auditor web UI"""
-    return FileResponse(os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "index.html"),
-                        media_type="text/html")
+@orchestrator.get("/ui/{path:path}", include_in_schema=False)
+async def auditor_ui(path: str = ""):
+    """
+    Serve the built React app (static/app) with SPA fallback for client routes such as /ui/session/3;
+    falls back to the single-file legacy UI when the app has not been built.
+    """
+    index = os.path.join(APP_DIR, "index.html")
+    if not os.path.isfile(index):
+        return FileResponse(os.path.join(STATIC_DIR, "index.html"), media_type="text/html")
+    candidate = _safe_join(APP_DIR, path) if path else None
+    if candidate and os.path.isfile(candidate):
+        return FileResponse(candidate)
+    if os.path.splitext(path)[1]:  # a missing asset must not return index.html
+        raise ApiError(404, "asset_not_found", f"/ui/{path} not found", "serving_ui")
+    return FileResponse(index, media_type="text/html")
+
+
+@orchestrator.get("/assets/{path:path}", include_in_schema=False)
+async def app_assets(path: str):
+    """Build assets when the React app is built with the default '/' base."""
+    candidate = _safe_join(os.path.join(APP_DIR, "assets"), path)
+    if candidate and os.path.isfile(candidate):
+        return FileResponse(candidate)
+    raise ApiError(404, "asset_not_found", f"/assets/{path} not found", "serving_ui")
 
 @orchestrator.get("/healthcheck")
 async def healthcheck():
@@ -217,13 +270,10 @@ async def _post_omniparser_limited(base64_image: str) -> Dict[str, Any]:
 async def call_omniparser(base64_image: str) -> Dict[str, Any]:
     """
     Call the Omniparser API with a base64 encoded image (bounded concurrency, timeouts, retry on 429/5xx).
+    The parsed items keep their bbox (0-1 ratios).
     Raises requests exceptions on failure; callers classify them.
     """
-    json_response = await retry_async(lambda: _post_omniparser_limited(base64_image), description="Omniparser call")
-    for item in json_response['parsed_content_list']:
-        if 'bbox' in item:
-            del item['bbox']
-    return json_response
+    return await retry_async(lambda: _post_omniparser_limited(base64_image), description="Omniparser call")
 
 
 def _download_blob_sync(blob_service_client: BlobServiceClient, container_name: str, blob_name: str) -> bytes:
@@ -296,7 +346,7 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
 
     # done = frames stored (or already described); failed = frames given up on
     stats = {"done": 0, "failed": 0, "last_error": None}
-    pending = []  # (frame_id, description) awaiting embedding
+    pending = []  # (frame_id, description, analysis dict) awaiting embedding
 
     async def report():
         await _job_update(job_id, frames_done=stats["done"], frames_failed=stats["failed"])
@@ -314,7 +364,7 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
         batch = list(pending)
         pending.clear()
         try:
-            descriptions = [description for _, description in batch]
+            descriptions = [description for _, description, _ in batch]
             embeddings = await retry_async(
                 lambda: azuretxtembedding.generate_embeddings(descriptions),
                 description="Embedding generation",
@@ -323,7 +373,7 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
             await fail_frames(len(batch), e, "openai", "Embedding generation")
             return
         try:
-            updates = [(frame_id, description, embeddings[i].tolist()) for i, (frame_id, description) in enumerate(batch)]
+            updates = [(frame_id, description, embeddings[i].tolist()) for i, (frame_id, description, _) in enumerate(batch)]
             updated = await asyncio.to_thread(update_frames_with_embeddings, updates)
         except Exception as e:
             await fail_frames(len(batch), e, "database", "Frame update")
@@ -333,6 +383,10 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
             await fail_frames(len(batch) - updated, RuntimeError(f"Bulk update touched {updated} of {len(batch)} frames"), "database", "Frame update")
             return
         logging.info(f"Updated {updated} frames with description and embedding")
+        try:
+            await asyncio.to_thread(update_frames_analysis, [{"id": frame_id, **meta} for frame_id, _, meta in batch])
+        except Exception as e:
+            logging.warning(f"Could not store risk/action/UI elements for {len(batch)} frame(s): {e}")
         await report()
 
     for image in review_images:
@@ -353,15 +407,16 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
                 _download_blob_sync, blob_service_client, image["container_name"], image["blob_name"]
             )
             base64_image = base64.b64encode(blob_data).decode('utf-8')
+            frame_width, frame_height = await asyncio.to_thread(image_size, blob_data)
+            ui_elements = None
 
             if os.getenv("OMNIPARSER_ENABLE", "true").lower() == "true":
                 source = "omniparser"
                 omniparser_response = await call_omniparser(base64_image)
                 som_image_base64 = omniparser_response.pop('som_image_base64', None)
+                ui_elements = elements_from_omniparser(omniparser_response['parsed_content_list'])
                 item_list = []
                 for item in omniparser_response['parsed_content_list']:
-                    if 'bbox' in item:
-                        del item['bbox']
                     item_list.append(f"type:{item['type']} interactivity:{item['interactivity']} content:{item['content']}")
                 source = "openai"
                 analysis = await run_agent(som_image_base64, set(item_list))
@@ -370,7 +425,12 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
                 analysis = await run_agent(base64_image, set())
             logging.info(f"Image analysis result: {analysis}")
 
-            pending.append((image["id"], str(analysis)))
+            analysis_text = str(analysis)
+            frame_meta = {
+                **parse_frame_analysis(analysis_text),
+                "ui_elements": ui_elements, "frame_width": frame_width, "frame_height": frame_height,
+            }
+            pending.append((image["id"], analysis_text, frame_meta))
             if len(pending) >= EMBEDDING_BATCH_SIZE:
                 await flush_pending()
         except Exception as e:
@@ -388,7 +448,8 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
     return {**preprocess_result, "frames_failed": stats["failed"]}
 
 
-async def update_video_review_and_text(preprocess_result: Dict[str, Any], job_id: Optional[str] = None):
+async def update_video_review_and_text(preprocess_result: Dict[str, Any], job_id: Optional[str] = None,
+                                       duration_s: Optional[int] = None):
     """
     Get image_descriptions from table, frames in database
     Use the image_descriptions as the input for agent which will generate video description with security review indicator
@@ -444,14 +505,23 @@ async def update_video_review_and_text(preprocess_result: Dict[str, Any], job_id
     else:
         review_content = str(security_review_result)
 
+    review_score, review_level = parse_risk(review_content)
     with api_errors(stage, "database", job_id):
         saved = await asyncio.to_thread(
             update_video_with_security_review, video_id, description=review_content,
-            security_level=_parse_risk_level(review_content)
+            security_level=review_level
         )
     if not saved:
         raise ApiError(503, "database_error", f"Failed to save security review for video {video_id}", stage, job_id)
     logging.info(f"Successfully updated video {video_id} with security review")
+
+    # Overall risk: the reviewer's score, else the highest frame score. Best-effort; never fails the job.
+    try:
+        frame_scores = [f["risk_score"] for f in review_images if f.get("risk_score") is not None]
+        overall = review_score if review_score is not None else (max(frame_scores) if frame_scores else None)
+        await asyncio.to_thread(update_video_metrics, video_id, duration_s, overall)
+    except Exception as e:
+        logging.warning(f"Could not store duration/risk for video {video_id}: {e}")
     return preprocess_result
 
 
@@ -460,19 +530,7 @@ _RISK_LEVELS = {"low", "medium", "high", "critical"}
 
 def _parse_risk_level(review_content: str) -> Optional[str]:
     """Extract risk_level from the reviewer output (JSON, possibly fenced/wrapped in text); None if absent."""
-    text = review_content.strip()
-    fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL | re.IGNORECASE)
-    candidates = [fenced.group(1)] if fenced else []
-    candidates += [text, text[text.find("{"):text.rfind("}") + 1]]
-    for candidate in candidates:
-        try:
-            data = json.loads(candidate)
-        except (ValueError, TypeError):
-            continue
-        level = data.get("risk_level") if isinstance(data, dict) else None
-        if isinstance(level, str) and level.strip().lower() in _RISK_LEVELS:
-            return level.strip().lower()
-    return None
+    return parse_risk(review_content)[1]
 
 
 def _required_ingest_env() -> list:
@@ -485,6 +543,21 @@ def _required_ingest_env() -> list:
     if os.getenv("OMNIPARSER_ENABLE", "true").lower() == "true":
         names += ["OMNIPARSER_HOST", "OMNIPARSER_PORT"]
     return names
+
+
+def _probe_duration_sync(path: str) -> Optional[int]:
+    """Video duration in whole seconds via OpenCV, or None if it can't be determined."""
+    cap = None
+    try:
+        cap = cv2.VideoCapture(path)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        return int(round(frames / fps)) if fps and fps > 0 and frames and frames > 0 else None
+    except Exception:
+        return None
+    finally:
+        if cap is not None:
+            cap.release()
 
 
 def _remove_quietly(path: Optional[str]):
@@ -527,6 +600,7 @@ async def run_ingest_pipeline(job_id: str, temp_filename: str, filename: str, co
 
             stage = "extracting_frames"
             await _job_update(job_id, stage=stage)
+            duration_s = await asyncio.to_thread(_probe_duration_sync, temp_filename)
             with api_errors(stage, "storage", job_id):
                 frame_paths = await asyncio.to_thread(
                     split_video,
@@ -546,6 +620,11 @@ async def run_ingest_pipeline(job_id: str, temp_filename: str, filename: str, co
                 "frames": {"count": len(frame_paths), "container": frames_container, "details": frame_paths}
             }, job_id)
             await _job_update(job_id, video_id=stored["video_id"])
+            if duration_s is not None:
+                try:
+                    await asyncio.to_thread(update_video_metrics, stored["video_id"], duration_s, None)
+                except Exception as e:
+                    logging.warning(f"Could not store duration for video {stored['video_id']}: {e}")
 
             stage = "analyzing_frames"
             await _job_update(job_id, status="analyzing", stage=stage)
@@ -553,7 +632,7 @@ async def run_ingest_pipeline(job_id: str, temp_filename: str, filename: str, co
 
             stage = "generating_summary"
             await _job_update(job_id, status="summarizing", stage=stage)
-            result = await update_video_review_and_text(analyzed, job_id)
+            result = await update_video_review_and_text(analyzed, job_id, duration_s)
 
             await _job_update(job_id, status="done", stage="done")
             return {**result, "job_id": job_id}
@@ -654,7 +733,7 @@ async def _get_video_or_404(video_id: int, stage: str) -> Dict[str, Any]:
 async def get_video_endpoint(video_id: int):
     """Video summary (security review), security level and frame counts."""
     video = await _get_video_or_404(video_id, "get_video")
-    video["summary"] = video.pop("video_description")
+    video["summary"] = summary_text(video.pop("video_description"))
     return video
 
 
@@ -720,6 +799,168 @@ async def ask_video(video_id: int, body: AskRequest):
             note = f"Answer generation failed ({err.error}); returning matches only."
 
     return {"video_id": video_id, "question": body.question, "answer": answer, "matches": matches, "note": note}
+
+
+@orchestrator.get("/stats", response_model=Stats, responses=ERROR_RESPONSES)
+async def stats_endpoint():
+    """Dashboard totals, risk distribution (videos by security_level), action types and recent videos."""
+    with api_errors("stats", "database"):
+        return await asyncio.to_thread(get_stats)
+
+
+@orchestrator.get("/videos/{video_id}/timeline", response_model=Timeline, responses=ERROR_RESPONSES)
+async def video_timeline(video_id: int):
+    """Per-frame risk points plus events (frames with risk_score >= 50) for a video."""
+    video = await _get_video_or_404(video_id, "timeline")
+    with api_errors("timeline", "database"):
+        frames = await asyncio.to_thread(list_timeline_frames, video_id)
+    points = [
+        {"frame_id": f["id"], "t": f["frame_timestamp"], "risk_score": f.get("risk_score"),
+         "risk_level": f.get("risk_level"), "action_type": f.get("action_type")}
+        for f in frames
+    ]
+    events = [
+        {"frame_id": f["id"], "t": f["frame_timestamp"], "risk_level": f.get("risk_level"),
+         "action_type": f.get("action_type"), "description": f.get("image_description")}
+        for f in frames if (f.get("risk_score") or 0) >= 50
+    ]
+    return {
+        "video_id": video_id, "filename": video.get("filename"), "duration_s": video.get("duration_s"),
+        "interval_s": FRAME_INTERVAL_S, "summary": summary_text(video.get("video_description")),
+        "security_level": video.get("security_level"), "risk_score": video.get("risk_score"),
+        "points": points, "events": events,
+    }
+
+
+async def _get_frame_or_404(frame_id: int, stage: str) -> Dict[str, Any]:
+    with api_errors(stage, "database"):
+        frame = await asyncio.to_thread(get_frame, frame_id)
+    if not frame:
+        raise ApiError(404, "frame_not_found", f"Frame {frame_id} not found", stage)
+    return frame
+
+
+@orchestrator.get("/frames/{frame_id}", response_model=FrameDetail, responses=ERROR_RESPONSES)
+async def get_frame_endpoint(frame_id: int):
+    """One frame with its analysis fields and a relative image_url."""
+    frame = await _get_frame_or_404(frame_id, "get_frame")
+    return {**frame, "image_url": f"/frames/{frame_id}/image"}
+
+
+def _download_frame_sync(connection_string: str, container_name: str, blob_name: str) -> bytes:
+    return _download_blob_sync(BlobServiceClient.from_connection_string(connection_string), container_name, blob_name)
+
+
+@orchestrator.get("/frames/{frame_id}/image", response_class=Response, responses={
+    200: {"content": {"image/jpeg": {}, "image/png": {}}, "description": "Frame image bytes"},
+    **ERROR_RESPONSES,
+})
+async def get_frame_image(frame_id: int):
+    """Frame image bytes, proxied from blob storage (or read from static/demo_assets for demo-local frames)."""
+    stage = "frame_image"
+    frame = await _get_frame_or_404(frame_id, stage)
+    headers = {"Cache-Control": "public, max-age=3600"}
+    if frame["container_name"] == DEMO_CONTAINER:
+        path = _safe_join(DEMO_ASSETS_DIR, frame["blob_name"])
+        if not path or not os.path.isfile(path):
+            raise ApiError(404, "image_unavailable", f"Demo asset {frame['blob_name']} not found", stage)
+        return FileResponse(path, headers=headers)
+    require_env(["AZURE_STORAGE_CONNECTION_STRING"], stage)
+    try:
+        data = await asyncio.to_thread(
+            _download_frame_sync, os.getenv("AZURE_STORAGE_CONNECTION_STRING", ""),
+            frame["container_name"], frame["blob_name"]
+        )
+    except Exception as e:
+        if type(e).__name__ == "ResourceNotFoundError":
+            raise ApiError(404, "image_unavailable", f"Frame image blob {frame['blob_name']} not found", stage)
+        raise classify_exception(e, stage, "storage")
+    return Response(content=data, media_type=mimetypes.guess_type(frame["blob_name"])[0] or "image/jpeg", headers=headers)
+
+
+@orchestrator.get("/frames/{frame_id}/elements", response_model=FrameElements, responses=ERROR_RESPONSES)
+async def get_frame_elements(frame_id: int):
+    """OmniParser UI elements of a frame; bbox is [x1, y1, x2, y2] as 0-1 ratios of the frame size."""
+    frame = await _get_frame_or_404(frame_id, "frame_elements")
+    elements = frame.get("ui_elements") or []
+    if isinstance(elements, str):
+        try:
+            elements = json.loads(elements)
+        except ValueError:
+            elements = []
+    return {"frame_id": frame_id, "width": frame.get("frame_width"), "height": frame.get("frame_height"), "elements": elements}
+
+
+async def _cached_source_video(video_id: int, stage: str) -> str:
+    """Local path of the (cached) source video; raises 404 clip_unavailable when it can't be obtained."""
+    await _get_video_or_404(video_id, stage)
+    video = await asyncio.to_thread(get_video_by_id, video_id)
+    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+    if not video or video.get("container_name") == DEMO_CONTAINER or not video.get("blob_name"):
+        raise ApiError(404, "clip_unavailable", f"No source video is stored for video {video_id}", stage)
+    if not connection_string:
+        raise ApiError(404, "clip_unavailable", "Blob storage is not configured, source video unavailable", stage)
+    path = media_utils.source_cache_path(video_id, video["blob_name"])
+    if not os.path.exists(path):
+        async with _SOURCE_LOCKS.setdefault(video_id, asyncio.Lock()):
+            if not os.path.exists(path):
+                try:
+                    await asyncio.to_thread(
+                        media_utils.download_blob_to_file_sync, connection_string,
+                        video["container_name"], video["blob_name"], path
+                    )
+                except Exception as e:
+                    logging.warning(f"Could not fetch source video {video_id}: {e}")
+                    raise ApiError(404, "clip_unavailable", "Source video could not be retrieved from storage", stage)
+    return path
+
+
+@orchestrator.get("/videos/{video_id}/clip", response_class=FileResponse, responses={
+    200: {"content": {"video/mp4": {}}, "description": "H.264 MP4 clip (faststart)"},
+    **ERROR_RESPONSES,
+})
+async def get_video_clip(
+    video_id: int,
+    t: float = Query(..., ge=0, description="Center of the clip, seconds from video start"),
+    before: float = Query(3, ge=0, le=60, description="Seconds before t"),
+    after: float = Query(3, ge=0, le=60, description="Seconds after t"),
+):
+    """
+    Short clip (t-before .. t+after, clamped to the video) cut from the source video with ffmpeg.
+    404 clip_unavailable when the source video or ffmpeg is missing; clients should fall back to frames.
+    """
+    stage = "clip"
+    video = await _get_video_or_404(video_id, stage)
+    if not media_utils.ffmpeg_path():
+        raise ApiError(404, "clip_unavailable", "ffmpeg is not installed on the server", stage)
+    source = await _cached_source_video(video_id, stage)
+
+    start, end = max(0.0, t - before), t + after
+    duration = video.get("duration_s")
+    if duration:
+        end = min(end, float(duration))
+        if start >= end:
+            start = max(0.0, end - (before + after))
+    length = max(end - start, 1.0)
+    destination = media_utils.clip_cache_path(video_id, start, length)
+    if not os.path.exists(destination):
+        try:
+            async with CLIP_SEMAPHORE:
+                await asyncio.to_thread(media_utils.make_clip_sync, source, destination, start, length)
+        except Exception as e:
+            logging.warning(f"Clip extraction failed for video {video_id}: {e}")
+            raise ApiError(404, "clip_unavailable", f"Clip could not be created: {e}", stage)
+    return FileResponse(destination, media_type="video/mp4")
+
+
+@orchestrator.get("/videos/{video_id}/stream", response_class=FileResponse, responses={
+    200: {"content": {"video/mp4": {}}, "description": "Source video; supports HTTP Range requests"},
+    **ERROR_RESPONSES,
+})
+async def stream_video(video_id: int):
+    """Source video with HTTP Range support (served from a local cache filled from blob storage)."""
+    source = await _cached_source_video(video_id, "stream")
+    return FileResponse(source, media_type=mimetypes.guess_type(source)[0] or "video/mp4")
 
 
 def _save_upload_sync(source, destination_path: str):
