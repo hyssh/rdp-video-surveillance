@@ -43,6 +43,21 @@ def initialize_schemas():
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS jobs (
+            id UUID PRIMARY KEY,
+            video_id INTEGER REFERENCES videos(id) ON DELETE SET NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'queued',
+            stage VARCHAR(50),
+            frames_total INTEGER NOT NULL DEFAULT 0,
+            frames_done INTEGER NOT NULL DEFAULT 0,
+            frames_failed INTEGER NOT NULL DEFAULT 0,
+            error TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT jobs_status_check CHECK (status IN ('queued','extracting','analyzing','summarizing','done','failed'))
+        )
+        """,
+        """
         CREATE INDEX IF NOT EXISTS idx_frames_video_id ON frames(video_id)
         """,
         """

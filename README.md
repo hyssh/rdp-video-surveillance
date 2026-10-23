@@ -70,8 +70,8 @@ rdp-video-surveillance/
 ├── requirements.txt        # Python dependencies for local development
 ├── .env.example            # Template for .env (all environment variables, with comments)
 ├── .env.docker.example     # docker compose flavored variant of the template
-├── v1_video20.cmd          # Legacy Windows sample: calls the removed /ingest-video/ endpoint (hard-coded paths)
-├── v2_video20.cmd          # Windows sample: calls /v2/ingest-video/ (hard-coded paths; edit before use)
+├── demo.sh                 # bash demo: ingest -> poll job -> print summary -> ask a question
+├── demo.cmd                # Windows demo: submits a video to the async ingest endpoint
 ├── images/
 │   └── windows_desktop.png # Sample screenshot used by test/test.py (.mp4 files are git-ignored; bring your own)
 ├── src/
@@ -84,7 +84,9 @@ rdp-video-surveillance/
 │   │   ├── util/           # OmniParser helpers
 │   │   └── weights/        # Model weights (git-ignored, created by setup_weights)
 │   └── orchestrator/       # Orchestration service
-│       ├── app.py          # FastAPI app (port 8082)
+│       ├── app.py          # FastAPI app (port 8082): endpoints + background pipeline
+│       ├── models.py       # Pydantic request/response models
+│       ├── errors.py       # Structured error responses
 │       ├── retry_utils.py  # Retry/backoff helpers for Azure calls
 │       ├── Dockerfile
 │       ├── requirements.txt
@@ -92,9 +94,10 @@ rdp-video-surveillance/
 │       │   ├── chat_completion/
 │       │   ├── image_analyzer/
 │       │   └── security_reviewer/
-│       └── postgresql/     # Database access layer (videos, frames, pgvector)
+│       └── postgresql/     # Database access layer (videos, frames, jobs, pgvector)
 └── test/
-    └── test.py             # Smoke test for the OmniParser /parse/ endpoint
+    ├── test.py             # Smoke test for the OmniParser /parse/ endpoint
+    └── demo_flow.py        # End-to-end check: health -> ingest -> poll job -> video -> ask
 ```
 
 ## Requirements
@@ -150,75 +153,130 @@ The first start takes several minutes (image build + model load). Orchestrator: 
 
 bash:
 ```bash
-curl http://localhost:8082/            # {"message":"Orchstrator API is running"}
+curl http://localhost:8082/            # {"message":"Orchestrator API is running"}
 curl http://localhost:8082/healthcheck # orchestrator can reach OmniParser
 curl http://localhost:8081/health      # OmniParser is up
 ```
 Windows: use `curl.exe` (Windows 10+) with the same URLs; in PowerShell plain `curl` is an alias of `Invoke-WebRequest`. Interactive API docs: `http://localhost:8082/docs` (FastAPI Swagger UI; OmniParser has its own at `http://localhost:8081/docs`).
 
-### 5. Ingest a video
+### 5. Ingest a video (async)
 
-`POST /v2/ingest-video/` takes a multipart form: `file` (required) plus optional `container_name` (default `videos`) and `frames_container` (default `frames`) blob containers.
+No sample recording ships with the repo (`*.mp4` is git-ignored): bring a 20-60 second RDP capture. `POST /v2/ingest-video/` takes a multipart form: `file` (required) plus optional `container_name` (default `videos`) and `frames_container` (default `frames`). It returns **202 immediately** with a job id; the analysis runs in the background.
 
 bash:
 ```bash
-curl -X POST "http://localhost:8082/v2/ingest-video/" \
-  -F "file=@/path/to/session.mp4" \
-  --max-time 3600
+curl -X POST "http://localhost:8082/v2/ingest-video/" -F "file=@/path/to/session.mp4"
 ```
 Windows cmd:
 ```cmd
-curl.exe -X POST "http://localhost:8082/v2/ingest-video/" -F "file=@C:\path\to\session.mp4" --max-time 3600
+curl.exe -X POST "http://localhost:8082/v2/ingest-video/" -F "file=@C:\path\to\session.mp4"
 ```
 Windows PowerShell:
 ```powershell
-curl.exe -X POST "http://localhost:8082/v2/ingest-video/" -F "file=@C:\path\to\session.mp4" --max-time 3600
+curl.exe -X POST "http://localhost:8082/v2/ingest-video/" -F "file=@C:\path\to\session.mp4"
 ```
 
-Response on success (the request only returns after the whole analysis finished):
+Response (HTTP 202):
 ```json
-{"status": "success", "video_id": 1, "frames": {"status": "success", "message": "Inserted 7 frames", "count": 7}}
+{"job_id": "0b5c...-uuid", "status": "queued", "status_url": "/jobs/0b5c...-uuid"}
 ```
-Errors return `{"detail": "..."}` with HTTP 4xx/5xx (e.g. 400 "No image descriptions found", 500 for Azure/DB failures). Note the `video_id`.
 
-**Expected wait:** ingestion is currently **synchronous**. One frame is sampled every 3 seconds, and each frame goes through OmniParser (GPU), a vision LLM call and an embedding call. Plan for roughly 5-20 seconds per frame depending on GPU and Azure latency (not benchmarked), i.e. a 1-minute recording (~20 frames) takes a few minutes. Keep the first demo to a 20-60 second clip and set a long client timeout (`--max-time`).
+> Shortcut: `./demo.sh /path/to/session.mp4` (bash, WSL or Git Bash) runs steps 5-8 end to end (override `BASE_URL`, `POLL_SECONDS`, `TIMEOUT_SECONDS`; optional 2nd argument is the question). `demo.cmd C:\path\to\session.mp4` only submits the video and prints the job info. `python test/demo_flow.py /path/to/session.mp4` runs the same flow as a PASS/FAIL check (without a video it only checks health and error shapes, and skips with a message if the orchestrator is unreachable).
 
-### 6. Read the result
+### 6. Poll the job
 
-There is no read endpoint yet (see roadmap); results are stored in PostgreSQL:
+```bash
+curl http://localhost:8082/jobs/<job_id>
+```
+Windows: `curl.exe http://localhost:8082/jobs/<job_id>`
 
-| Table / column | Content |
-|---|---|
-| `videos.video_description` | Security reviewer JSON for the whole session (summary, `manual_review`, `risk_score`, `risk_level`, `analysis_results.key_observations[]`) |
-| `frames.image_description` | Per-frame analysis JSON, ordered by `frames.frame_timestamp` (seconds into the video) |
-| `videos.security_level` | Not populated by the pipeline yet; ignore |
+```json
+{"job_id": "...", "status": "analyzing", "stage": "analyzing_frames", "frames_done": 7, "frames_total": 20,
+ "frames_failed": 0, "video_id": 1, "error": null, "created_at": "...", "updated_at": "..."}
+```
+`status` moves `queued -> extracting -> analyzing -> summarizing -> done` (or `failed`, with `error` set). Poll every 5-10 seconds until `done`; then use `video_id`.
+
+**Expected wait:** one frame is sampled every 3 seconds, and each frame goes through OmniParser (GPU), a vision LLM call and an embedding call. Plan for roughly 5-20 seconds per frame depending on GPU and Azure latency (not benchmarked), i.e. a 1-minute recording (~20 frames) takes a few minutes. Up to `MAX_CONCURRENT_JOBS` jobs run at once; the rest stay `queued`.
+
+A job can be `done` with `frames_failed > 0`: failed frames are skipped, and the job only fails if every frame fails. Such jobs carry a human-readable `warnings` list (e.g. "N of M frames failed analysis and were skipped"); `status` stays `done`. `demo.sh` and `test/demo_flow.py` print any warnings.
+
+Legacy synchronous mode: `POST /v2/ingest-video/?wait=true` blocks until finished and returns 200 `{"status","video_id","frames":{...},"frames_failed","job_id"}`. Use a long client timeout (`--max-time 3600`).
+
+### 7. List and inspect videos
+
+```bash
+curl "http://localhost:8082/videos?limit=10"          # newest first
+curl http://localhost:8082/videos/1                   # summary for one video
+curl "http://localhost:8082/videos/1/frames?limit=50" # per-frame analysis, ordered by timestamp
+```
+Windows: same URLs with `curl.exe` (quote URLs containing `&` or `?` in cmd).
+
+`GET /videos/{id}` returns `{id, filename, summary, security_level, frame_count, frames_described, created_at}`. `summary` is the security reviewer's JSON **as a string**: parse it, then start with `manual_review` (Yes/No + reason) and `risk_level`/`risk_score` (0-100: low 0-24, medium 25-49, high 50-74, critical 75-100). Each entry in `analysis_results.key_observations[]` carries `frame_id`, `frame_timestamp`, `evidence`, `confidence` (0-1) and its own risk score, so you can jump to the exact moment in the recording. "not observable" means the model could not confirm the item from the frames. `security_level` is set from the review's `risk_level` (low/medium/high/critical; stays `low` if the summary could not be parsed).
+
+`GET /videos/{id}/frames` items: `{id, frame_timestamp (seconds into the video), image_description, url}`.
+
+### 8. Ask questions about a video
+
+`POST /videos/{id}/ask` embeds the question, retrieves the `top_k` (1-20, default 5) most similar frames and answers from them.
 
 bash:
 ```bash
-export PGPASSWORD='<password>' PGSSLMODE=require
-psql -h <PGHOST> -U <PGUSER> -d postgres -c "select id, filename, video_description from videos where id = 1;"
-psql -h <PGHOST> -U <PGUSER> -d postgres -c "select frame_timestamp, left(image_description, 200) from frames where video_id = 1 order by frame_timestamp;"
+curl -X POST http://localhost:8082/videos/1/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Were any passwords or keys visible on screen?", "top_k": 5}'
 ```
-Windows (cmd): `set PGPASSWORD=<password>` and `set PGSSLMODE=require`, then run the same `psql` commands (single line each).
+Windows cmd (escape the inner quotes):
+```cmd
+curl.exe -X POST http://localhost:8082/videos/1/ask -H "Content-Type: application/json" -d "{\"question\": \"Were any passwords or keys visible on screen?\", \"top_k\": 5}"
+```
+Windows PowerShell (use a here-string or a file to avoid quoting problems):
+```powershell
+'{"question": "Were any passwords or keys visible on screen?", "top_k": 5}' | Set-Content ask.json
+curl.exe -X POST http://localhost:8082/videos/1/ask -H "Content-Type: application/json" --data-binary "@ask.json"
+```
 
-How to read it: start with `manual_review` (Yes/No + reason) and `risk_level`/`risk_score` (0-100: low 0-24, medium 25-49, high 50-74, critical 75-100). Each entry in `key_observations` carries `frame_id`, `frame_timestamp`, `evidence`, `confidence` (0-1) and its own risk score so you can jump to the exact moment in the recording. "not observable" means the model could not confirm the item from the frames.
+Response:
+```json
+{"video_id": 1, "question": "...", "answer": "Yes, at 00:06 ...",
+ "matches": [{"frame_id": 2, "frame_timestamp": 6, "image_description": "...", "similarity": 0.87, "url": "https://..."}],
+ "note": null}
+```
+`matches` are the evidence: check the cited frame (`url`) and `frame_timestamp`. If answer generation fails or is disabled, `answer` is `null` and `note` explains why; the matches are still returned.
 
-### 7. Sample auditor questions
+Sample auditor questions:
 
-Ask these of the stored results (via SQL today, via the planned chat endpoint later):
-
-1. Which sessions require manual review, and why?
+1. Does this session require manual review, and why?
 2. Were passwords, keys, or other secrets visible on screen? In which frames/timestamps?
 3. Did the user install software or run unfamiliar scripts or CLI commands?
 4. Did the user log in to or connect to another system or server during the session?
 5. Was any data moved off the machine (download, upload, copy to external location), and what was the evidence and confidence?
 
-### Quick API smoke test (OmniParser only)
+## API reference
+
+Orchestrator, `http://localhost:8082` (interactive docs at `/docs`).
+
+| Method | Path | Purpose | Success response |
+|---|---|---|---|
+| GET | `/` | Liveness | 200 `{"message": ...}` |
+| GET | `/healthcheck` | Orchestrator can reach OmniParser | 200 |
+| POST | `/v2/ingest-video/` | Submit a video (multipart `file`; form `container_name`, `frames_container`; query `wait=false`) | 202 `{job_id, status, status_url}`; with `wait=true` 200 `{status, video_id, frames, frames_failed, job_id}` |
+| GET | `/jobs/{job_id}` | Job progress | 200 `{job_id, status, stage, frames_done, frames_total, frames_failed, warnings[], video_id, error, created_at, updated_at}` |
+| GET | `/videos?limit&offset` | List videos (newest first; `limit` 1-200) | 200 `{items[{id, filename, security_level, created_at}], total, limit, offset}` |
+| GET | `/videos/{id}` | One video with summary | 200 `{id, filename, summary, security_level, frame_count, frames_described, created_at}` |
+| GET | `/videos/{id}/frames?limit&offset` | Frames with analysis (`limit` 1-500) | 200 `{items[{id, frame_timestamp, image_description, url}], total, limit, offset}` |
+| POST | `/videos/{id}/ask` | Ask about a video (JSON `{question, top_k}`) | 200 `{video_id, question, answer, matches[{frame_id, frame_timestamp, image_description, similarity, url}], note}` |
+
+OmniParser, `http://localhost:8081`: `GET /health`, `POST /parse/` (image in, parsed UI elements out; returns 429 + `Retry-After` when busy).
+
+Errors from the orchestrator use one shape: `{"error": "<code>", "stage": "<where>", "detail": "<message>", "job_id": "<optional>"}` with HTTP 400 (bad input / missing config, e.g. `missing_config`, `invalid_job_id`), 404 (`job_not_found`, `video_not_found`), 502 (upstream Azure/OmniParser error) or 503 (dependency unavailable, e.g. `omniparser_unavailable`). Request-validation failures (e.g. missing `file`, empty `question`, `top_k` out of range) return HTTP 422 with the same shape: `error: "invalid_request"`, `stage: "validating_request"`.
+
+### Smoke tests
 
 ```bash
-python test/test.py
+python test/test.py                          # OmniParser only
+python test/demo_flow.py [/path/to/video.mp4] # orchestrator flow (set ORCHESTRATOR_URL, JOB_TIMEOUT_SECONDS if needed)
 ```
-It posts `images/windows_desktop.png` to `/parse/` ten times (5 s connect / 120 s read timeout) and prints a PASS/FAIL line. It reads `OMNIPARSER_HOST`/`OMNIPARSER_PORT` from `.env` (default `localhost:8081`).
+`test/test.py` posts `images/windows_desktop.png` to `/parse/` ten times (5 s connect / 120 s read timeout) and prints a PASS/FAIL line; it reads `OMNIPARSER_HOST`/`OMNIPARSER_PORT` from `.env` (default `localhost:8081`).
 
 ### Running services individually (optional)
 
@@ -229,18 +287,29 @@ docker run --gpus all -p 8081:8081 -v "$(pwd)/src/omniparser/weights:/app/weight
 docker run -p 8082:8082 --env-file .env -e OMNIPARSER_HOST=host.docker.internal rdp-video-surveillance-orchestrator
 ```
 
+## Tuning knobs
+
+Set in `.env` (documented in `.env.example`):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MAX_CONCURRENT_JOBS` | 2 | Ingest jobs the orchestrator runs at once; extra jobs wait in `queued` |
+| `MAX_CONCURRENT_OMNIPARSER` | 2 | Frames the orchestrator sends to OmniParser at the same time |
+| `OMNIPARSER_MAX_CONCURRENCY` | 1 | Parallel inferences the OmniParser server accepts (bounded by GPU memory); extra requests get HTTP 429 with `Retry-After` |
+| `OMNIPARSER_READ_TIMEOUT`, `EMBEDDING_BATCH_SIZE`, `RETRY_MAX_ATTEMPTS` | see `.env.example` | Timeouts, embedding batching and Azure retry behaviour |
+
+Throughput is bounded by a single GPU and by Azure OpenAI rate limits; raising concurrency beyond them only produces 429s/retries.
+
 ## Known limitations / Roadmap
 
-- **Synchronous ingestion**: one HTTP request blocks until the whole video is analyzed. Planned: async jobs (submit, then poll status by `video_id`).
-- **No read/chat/UI endpoints**: results must be read from PostgreSQL. Planned: report, search and chat endpoints and a simple UI.
-- **Azure-only**: Blob Storage, Azure OpenAI and PostgreSQL are required; there is no local mode. No authentication on the APIs (demo only).
+- **Jobs run in-process**: they execute inside the orchestrator process and are lost on restart. At startup, jobs still non-terminal are marked `failed` with `interrupted by restart`; this is wrong when running several uvicorn workers (one worker would fail another's live jobs), so keep a single worker.
+- **No retry endpoint**: a `failed` job (or a video with `frames_failed > 0`) must be re-ingested by uploading again; blobs are stored as `{job_id}/{filename}`, so re-uploads never overwrite.
+- **Stale-job cleanup is partial**: only the restart sweep above; jobs that hang while the process stays up are not detected or removed.
+- **No UI**: API (and `/docs`) only.
+- **No authentication** on the APIs (demo only).
+- **Azure-only**: Blob Storage, Azure OpenAI and PostgreSQL are required; there is no local mode.
 - **Frame sampling**: fixed 1 frame / 3 s; short-lived on-screen events can be missed.
-- **Scalability**: a single orchestrator instance and a single GPU. Throughput is bounded by OmniParser and Azure OpenAI rate limits. Tuning knobs (set in `.env`, documented in `.env.example`; they apply once the corresponding code is deployed):
-  - `MAX_CONCURRENT_OMNIPARSER` - frames the orchestrator sends to OmniParser at the same time (default 2)
-  - `OMNIPARSER_MAX_CONCURRENCY` - parallel inferences the OmniParser server accepts, bounded by GPU memory (default 1); extra requests get HTTP 429 with `Retry-After`
-  - Related timeouts/batching: `OMNIPARSER_READ_TIMEOUT`, `EMBEDDING_BATCH_SIZE`, `RETRY_MAX_ATTEMPTS`
-- **Model output is not ground truth**: verdicts come from an LLM; always check the cited frame/timestamp before acting. The `v1_video20.cmd` script targets a removed endpoint.
-
+- **Model output is not ground truth**: verdicts come from an LLM; always check the cited frame/timestamp before acting.
 
 ## License
 

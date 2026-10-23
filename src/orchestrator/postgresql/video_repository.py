@@ -74,22 +74,24 @@ def get_video_by_id(video_id: int) -> Optional[Dict[str, Any]]:
         logger.error(f"Failed to retrieve video with ID {video_id}: {str(e)}")
         return None
     
-def update_video_with_security_review(video_id: int, description: str) -> bool:
+def update_video_with_security_review(video_id: int, description: str, security_level: Optional[str] = None) -> bool:
     """
     Update the description of a video by its ID
     Args:
         video_id: ID of the video to update
         description: New description for the video
+        security_level: Optional new security level; the existing value is kept when None
     """    
     from .connection import DatabaseManager
     update_sql = """
         UPDATE videos
-        SET video_description = %s
+        SET video_description = %s,
+            security_level = COALESCE(%s, security_level)
         WHERE id = %s
     """
     try:
         with DatabaseManager() as cursor:
-            cursor.execute(update_sql, (description, video_id))
+            cursor.execute(update_sql, (description, security_level, video_id))
             if cursor.rowcount > 0:
                 logger.info(f"Video with ID {video_id} updated successfully")
                 return True
@@ -99,3 +101,47 @@ def update_video_with_security_review(video_id: int, description: str) -> bool:
     except Exception as e:
         logger.error(f"Failed to update video with ID {video_id}: {str(e)}")
         return False
+
+def list_videos(limit: int = 50, offset: int = 0):
+    """
+    Return (rows, total) for a page of videos, newest first. Raises on database errors.
+    """
+    from .connection import DatabaseManager
+
+    with DatabaseManager() as cursor:
+        cursor.execute("SELECT COUNT(*) FROM videos")
+        total = cursor.fetchone()[0]
+        cursor.execute(
+            """
+            SELECT id, filename, security_level, created_at
+            FROM videos
+            ORDER BY id DESC
+            LIMIT %s OFFSET %s
+            """,
+            (limit, offset),
+        )
+        return [dict(row) for row in cursor.fetchall()], total
+
+
+def get_video_detail(video_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Return video summary fields plus frame counts, or None if the video doesn't exist.
+    Raises on database errors.
+    """
+    from .connection import DatabaseManager
+
+    with DatabaseManager() as cursor:
+        cursor.execute(
+            """
+            SELECT v.id, v.filename, v.video_description, v.security_level, v.created_at,
+                   COUNT(f.id) AS frame_count,
+                   COUNT(f.id) FILTER (WHERE f.image_description IS NOT NULL) AS frames_described
+            FROM videos v
+            LEFT JOIN frames f ON f.video_id = v.id
+            WHERE v.id = %s
+            GROUP BY v.id
+            """,
+            (video_id,),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None

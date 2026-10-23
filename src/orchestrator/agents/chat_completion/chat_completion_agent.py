@@ -135,6 +135,42 @@ async def get_chat_completion_agent_thread(thread_id: Optional[str] = None):
     return agent, thread
 
 
+QA_AGENT_INSTRUCTIONS = (
+    "You answer questions about a screen-recording (remote desktop session) using only the frame "
+    "descriptions provided. Cite the supporting frames inline as [frame <id> @ <timestamp>s]. "
+    "If the descriptions do not contain the answer, say so plainly. Be concise."
+)
+
+
+async def get_qa_agent() -> ChatCompletionAgent:
+    """Create a lightweight Q&A agent (same Azure OpenAI chat deployment as the other agents)."""
+    return ChatCompletionAgent(
+        service=AzureChatCompletion(
+            api_key=os.getenv("AZURE_OPENAI_APIKEY"),
+            endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+            deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"),
+            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview"),
+        ),
+        name="VideoQAAgent",
+        instructions=QA_AGENT_INSTRUCTIONS,
+    )
+
+
+async def qa_agent_run(agent: ChatCompletionAgent, question: str, frames: list) -> str:
+    """
+    Answer a question from matched frames.
+
+    Args:
+        frames: dicts with 'id', 'frame_timestamp' and 'image_description'
+    """
+    context = "\n\n".join(
+        f"[frame {f['id']} @ {f.get('frame_timestamp')}s]\n{f.get('image_description') or ''}" for f in frames
+    )
+    prompt = f"Question: {question}\n\nFrame descriptions:\n{context}"
+    response = await agent.get_response(messages=prompt, top_p=0.1, temperature=0.1)
+    return str(getattr(response, "content", response))
+
+
 async def chat_completion_agent_run(agent: ChatCompletionAgent, 
                                    thread: Optional[ChatHistoryAgentThread] = None, 
                                    user_input: Optional[str] = None, 

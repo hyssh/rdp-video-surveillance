@@ -3,15 +3,19 @@ from .schemas import initialize_schemas, add_vector_search_functions
 from .video_repository import (
     insert_video, 
     get_video_by_id, 
-    update_video_with_security_review
+    update_video_with_security_review,
+    list_videos,
+    get_video_detail
 )
+from .job_repository import create_job, update_job, get_job, fail_interrupted_jobs
 from .frame_repository import (
     insert_frames, 
     get_frames_by_video_id, 
     update_frame_with_embedding,
     update_frames_with_embeddings,
     search_similar_frames,
-    get_frames_without_embeddings
+    get_frames_without_embeddings,
+    list_frames
 )
 
 # Initialize the database when the module is imported
@@ -28,5 +32,12 @@ __all__ = [
     'update_frames_with_embeddings',
     'search_similar_frames',
     'get_frames_without_embeddings',
-    'update_video_with_security_review'
+    'update_video_with_security_review',
+    'list_videos',
+    'get_video_detail',
+    'list_frames',
+    'create_job',
+    'update_job',
+    'get_job',
+    'fail_interrupted_jobs'
 ]

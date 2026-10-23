@@ -211,14 +211,39 @@ def update_frames_with_embeddings(updates: List[Tuple[int, str, list]], page_siz
         logger.error(f"Failed to bulk update frames with embeddings: {str(e)}")
         return 0
 
-def search_similar_frames(query_vector: list, threshold: float = 0.75, max_results: int = 10) -> List[Dict[str, Any]]:
+def list_frames(video_id: int, limit: int = 50, offset: int = 0):
+    """
+    Return (rows, total) for a page of a video's frames ordered by timestamp. Raises on database errors.
+    """
+    from .connection import DatabaseManager
+
+    with DatabaseManager() as cursor:
+        cursor.execute("SELECT COUNT(*) FROM frames WHERE video_id = %s", (video_id,))
+        total = cursor.fetchone()[0]
+        cursor.execute(
+            """
+            SELECT id, frame_timestamp, image_description, url
+            FROM frames
+            WHERE video_id = %s
+            ORDER BY frame_timestamp, id
+            LIMIT %s OFFSET %s
+            """,
+            (video_id, limit, offset),
+        )
+        return [dict(row) for row in cursor.fetchall()], total
+
+def search_similar_frames(query_vector: list, threshold: Optional[float] = 0.75, max_results: int = 10,
+                          video_id: Optional[int] = None, raise_on_error: bool = False) -> List[Dict[str, Any]]:
     """
     Search for frames similar to the provided vector
     
     Args:
         query_vector: Vector to search for (1536 dimensions)
-        threshold: Similarity threshold (0-1, higher means more similar)
+        threshold: Similarity threshold (0-1, higher means more similar). Only applied when
+            video_id is given (the legacy SQL function ignores it); None disables it.
         max_results: Maximum number of results to return
+        video_id: Optionally restrict the search to a single video
+        raise_on_error: Raise database errors instead of returning []
         
     Returns:
         List[Dict]: List of similar frames with similarity scores
@@ -227,13 +252,34 @@ def search_similar_frames(query_vector: list, threshold: float = 0.75, max_resul
     
     try:
         with DatabaseManager() as cursor:
-            cursor.execute(
-                "SELECT * FROM search_similar_frames(%s, %s, %s)",
-                (query_vector, threshold, max_results)
-            )
+            if video_id is None:
+                cursor.execute(
+                    "SELECT * FROM search_similar_frames(%s, %s, %s)",
+                    (query_vector, 0.75 if threshold is None else threshold, max_results)
+                )
+            else:
+                # pgvector text literal; similarity is cosine for unit-length embeddings (L2 ops keep the IVFFlat index usable)
+                vector_literal = "[" + ",".join(repr(float(x)) for x in query_vector) + "]"
+                cursor.execute(
+                    """
+                    SELECT * FROM (
+                        SELECT id, video_id, blob_name, url, frame_timestamp, image_description,
+                               1 - ((embedding <-> %(q)s::vector) ^ 2) / 2 AS similarity
+                        FROM frames
+                        WHERE video_id = %(video_id)s AND embedding IS NOT NULL
+                        ORDER BY embedding <-> %(q)s::vector
+                        LIMIT %(limit)s
+                    ) ranked
+                    WHERE %(threshold)s::float IS NULL OR similarity >= %(threshold)s::float
+                    ORDER BY similarity DESC
+                    """,
+                    {"q": vector_literal, "video_id": video_id, "limit": max_results, "threshold": threshold},
+                )
             return [dict(row) for row in cursor.fetchall()]
     except Exception as e:
         logger.error(f"Failed to search similar frames: {str(e)}")
+        if raise_on_error:
+            raise
         return []
 
 def get_frames_without_embeddings(limit: int = 100) -> List[Dict[str, Any]]:
