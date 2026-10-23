@@ -150,7 +150,7 @@ Windows (cmd / PowerShell):
 ```cmd
 copy .env.example .env
 ```
-Edit `.env` and replace every `####` placeholder (storage, Azure OpenAI, PostgreSQL). `docker compose` reads `.env` automatically. `.env.docker.example` is an equivalent variant (use it with `docker compose --env-file .env.docker up`). `.env.example` documents every variable, including the optional tuning knobs.
+Edit `.env` and replace every `####` placeholder (storage, Azure OpenAI, PostgreSQL). The agents and embeddings use [Microsoft Agent Framework](https://learn.microsoft.com/agent-framework/): set `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` (leave empty to use Entra ID / `az login`), `AZURE_OPENAI_CHAT_COMPLETION_MODEL` and `AZURE_OPENAI_EMBEDDING_MODEL`; the older `AZURE_OPENAI_APIKEY` / `*_DEPLOYMENT_NAME` names still work. `docker compose` reads `.env` automatically. `.env.docker.example` is an equivalent variant (use it with `docker compose --env-file .env.docker up`). `.env.example` documents every variable, including the optional tuning knobs.
 
 ### 3. Start the services
 
@@ -297,7 +297,7 @@ Windows (cmd / PowerShell): the same commands with `python` (or `py`) and `scrip
 
 Requirements and caveats:
 - The database settings (`PGHOST`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`, `PGPORT`) are read from the repo-root `.env`; the database must be reachable from where you run the script (not only from inside Docker). The script adds the demo columns (`risk_score`, `ui_elements`, ...) with `ADD COLUMN IF NOT EXISTS` if the orchestrator has not created them yet.
-- **Embeddings**: if `AZURE_TEXT_EMBEDDING_ENDPOINT` and `AZURE_TEXT_EMBEDDING_APIKEY` are set (and `semantic-kernel` is installed) the frame descriptions are embedded with the same Azure deployment the orchestrator uses. Otherwise the script stores deterministic **pseudo-embeddings** (hashed word vectors): the UI works, but the ranking of "Ask" matches is only roughly keyword-like and the answer text still needs Azure OpenAI. For a real Q&A demo set the Azure variables and run with `--reset`.
+- **Embeddings**: if `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY` (or the `AZURE_TEXT_EMBEDDING_*` pair) are set and `agent-framework-openai` is installed, the frame descriptions are embedded with the same Azure deployment the orchestrator uses (via Microsoft Agent Framework). Otherwise the script stores deterministic **pseudo-embeddings** (hashed word vectors): the UI works, but the ranking of "Ask" matches is only roughly keyword-like and the answer text still needs Azure OpenAI. For a real Q&A demo set the Azure variables and run with `--reset`.
 - Seeded frame descriptions are plain narrative text (frames analyzed by the real pipeline store the model's JSON). Seeded sessions have no source video, so there are no clips.
 
 ## Demo script (5-minute talk track)

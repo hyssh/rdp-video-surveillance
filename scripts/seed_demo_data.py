@@ -70,27 +70,29 @@ class Embedder:
 
     def __init__(self, force_pseudo: bool) -> None:
         self.azure = False
-        self.api_key = os.getenv("AZURE_TEXT_EMBEDDING_APIKEY")
-        self.endpoint = os.getenv("AZURE_TEXT_EMBEDDING_ENDPOINT")
-        self.deployment = os.getenv("AZURE_AI_AGENT_EMBEDDING_MODEL_DEPLOYMENT_NAME", "text-embedding-ada-002")
         if force_pseudo:
             return
-        if not (self.api_key and self.endpoint):
-            print("Embeddings: AZURE_TEXT_EMBEDDING_* not set -> using deterministic PSEUDO-embeddings "
-                  "(the /ask similarity ranking will not be meaningful; set the Azure variables and rerun with --reset).")
-            return
+        if ORCH_DIR not in sys.path:
+            sys.path.insert(0, ORCH_DIR)
         try:
-            import semantic_kernel  # noqa: F401
-            self.azure = True
+            from dotenv import load_dotenv
+            load_dotenv(os.path.join(REPO, ".env"))
+            from agents import llm
         except ImportError:
-            print("Embeddings: semantic-kernel is not installed -> using PSEUDO-embeddings (pip install -r src/orchestrator/requirements.txt).")
+            print("Embeddings: agent-framework is not installed -> using PSEUDO-embeddings (pip install -r src/orchestrator/requirements.txt).")
+            return
+        self.llm = llm
+        if not llm.embedding_configured():
+            print("Embeddings: Azure OpenAI embedding settings not set -> using deterministic PSEUDO-embeddings "
+                  "(the /ask similarity ranking will not be meaningful; set AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_API_KEY and rerun with --reset).")
+            return
+        self.azure = True
 
     async def _embed(self, texts: List[str]) -> List[List[float]]:
-        from semantic_kernel.connectors.ai.open_ai import AzureTextEmbedding
-        service = AzureTextEmbedding(service_id="azure-text-embedding", api_key=self.api_key, endpoint=self.endpoint, deployment_name=self.deployment)
+        client = self.llm.make_embedding_client()
         vectors: List[List[float]] = []
         for i in range(0, len(texts), 16):
-            vectors += [v.tolist() for v in await service.generate_embeddings(texts[i:i + 16])]
+            vectors += await self.llm.embed_texts(client, texts[i:i + 16])
         return vectors
 
     def embed(self, texts: List[str]) -> List[List[float]]:

@@ -1,4 +1,6 @@
-semantic-kernel==1.32.2
+agent-framework-core==1.22.0
+agent-framework-openai==1.17.0
+azure-identity
 python-dotenv==1.1.0
 uvicorn==0.34.3
 fastapi==0.115.12
