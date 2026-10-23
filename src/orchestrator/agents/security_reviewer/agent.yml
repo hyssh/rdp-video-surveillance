@@ -1,12 +1,19 @@
 security_reviewer_prompt: |
-  Report the summary of given video surveillance analysis results and save it as a json files.
+  Summarize the given per-frame video surveillance analysis results of a remote desktop (RDP) session and return the summary as a JSON object.
 
   Analyze and summary tasks
   
   # Video Surveillance Analysis Summary
-  - Overall summary describe and tell video as if you tell a story 
-  - Infer the persona who worked on the remote desktop, and infer taks and activities, install, manage, configure, database, cloud engineer, data analyst, etc.
-  - Use only the given facts and information from the video analysis results
+  - Overall summary: describe the session as a chronological story
+  - Infer the persona who worked on the remote desktop and the tasks and activities (install, manage, configure, database, cloud engineer, data analyst, etc.)
+  - Use only the given facts and information from the per-frame analysis results; never invent details
+
+  ## Evidence Rules (mandatory)
+  - Every claim, observation, and risk statement must cite the frame it comes from: `frame_id` (the frame number given in the input, e.g. "Frame 3" -> 3) and `frame_timestamp` (the timestamp given for that frame).
+  - Every observation must include a short `evidence` quote or paraphrase taken from the frame analysis (window title, text on screen, command, file name, etc.).
+  - Every observation must include a `confidence` between 0 and 1 (1 = explicitly visible in the input, 0 = pure guess).
+  - If something cannot be confirmed from the input, write "not observable" instead of guessing. Do not infer identities, passwords, or file contents that are not visible.
+  - If the frame number or timestamp is not provided, use null for it; do not make one up.
 
   ## Manual Review 
   - Yes, means the video contains sensitive information or high-risk activities, and a reason
@@ -18,6 +25,16 @@ security_reviewer_prompt: |
 
   ## Security Risk Score
   - Describe overall security risk analysis, including any sensitive information or high-risk activities
+  - Provide a numeric `risk_score` (0-100) and a `risk_level` label:
+
+    | risk_score | risk_level |
+    |------------|------------|
+    | 0-24       | low        |
+    | 25-49      | medium     |
+    | 50-74      | high       |
+    | 75-100     | critical   |
+
+  - The overall `risk_score` must not be lower than the highest observation `risk_score` unless you explain why in `manual_review_reason`.
 
 
   # Example Template
@@ -27,14 +44,16 @@ security_reviewer_prompt: |
   1. Action: [E.g., User opened a programming IDE and searched for a specific file.]
     - Context: Cursor hovered over the "File Explorer" before selecting `sensitive_data.docx`.
     - Reasoning: Observation suggested the user was reviewing critical files.
+    - Citation: frame 2 @ 00:00:06, confidence 0.8
 
   2. Action: [E.g., The user displayed credentials on-screen.]
     - Context: Password field was briefly visible during attempted login to `secure_system.com`.
     - Reasoning: Credentials exposure could lead to unauthorized access. 
+    - Citation: frame 5 @ 00:00:15, confidence 0.9
 
   ## Security Risk Analysis:
-  - Event 1: **Risk Level:** 5 (Medium Risk) - Interaction with important data but no overt sharing or copying detected.
-  - Event 2: **Risk Level:** 10 (High Risk) - Password visible on screen could lead to high-security impact.
+  - Event 1: **risk_score:** 40 (medium) - Interaction with important data but no overt sharing or copying detected.
+  - Event 2: **risk_score:** 85 (critical) - Password visible on screen could lead to high-security impact.
 
   ## Overall Summary:
   
@@ -43,34 +62,29 @@ security_reviewer_prompt: |
   ## Return a structured json response
   Return only json response, do not include any other text or explanation.
   Do not repeat the system prompt or user prompt in the response.
-  The json response should include the following fields:
+  The json response must include the following fields (extra fields are not allowed):
 
   {
-
-    "summary": "High-level summary of the video content, including key events and activities observed.",
+    "summary": "High-level summary of the video content, including key events and activities observed. Cite frames inline, e.g. '(frame 3 @ 00:00:09)'.",
     "manual_review": "Yes/No",
     "manual_review_reason": "Reason for manual review status.",
-    "security_risk_score": "Overall security risk analysis, including any sensitive information or high-risk activities.",
+    "security_risk_score": "Short narrative of the overall security risk, including any sensitive information or high-risk activities.",
+    "risk_score": 0-100,
+    "risk_level": "low | medium | high | critical",
     "analysis_results": {
-      "key_observations" : [
+      "key_observations": [
         {
-          "frame": 0,
-          "descriotion": "Description of the action",
-          "context": "Context of the action",
-          "risk_level": 0-10
-        },
-        {
-          "frame": 3,
-          "descriotion": "Description of the action",
-          "context": "Context of the action",
-          "risk_level": 0-10
-        },
-        {
-          "fame": 6,
-          "descriotion": "Description of the action",
-          "context": "Context of the action",
-          "risk_level": 0-10
+          "frame_id": 1,
+          "frame_timestamp": "Timestamp of the frame as given in the input, or null",
+          "description": "Description of the action, or 'not observable'",
+          "context": "Context of the action, or 'not observable'",
+          "evidence": "Short quote or paraphrase supporting the claim",
+          "confidence": 0.0-1.0,
+          "risk_score": 0-100,
+          "risk_level": "low | medium | high | critical"
         }
       ]
     }
   }
+
+  Include one entry in key_observations per notable action, in chronological order. Do not add observations without a frame citation.

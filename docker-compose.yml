@@ -27,7 +27,7 @@ services:
               count: 1
               capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/test_result_image/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
       interval: 600s
       timeout: 10s
       retries: 3
@@ -57,6 +57,9 @@ services:
       - AZURE_TEXT_EMBEDDING_ENDPOINT=${AZURE_TEXT_EMBEDDING_ENDPOINT}
       - AZURE_TEXT_EMBEDDING_APIKEY=${AZURE_TEXT_EMBEDDING_APIKEY}
       - AZURE_TEXT_EMBEDDING_API_VERSION=2024-12-01-preview
+      - MAX_CONCURRENT_OMNIPARSER=${MAX_CONCURRENT_OMNIPARSER:-2}
+      - EMBEDDING_BATCH_SIZE=${EMBEDDING_BATCH_SIZE:-16}
+      - RETRY_MAX_ATTEMPTS=${RETRY_MAX_ATTEMPTS:-4}
       - PGHOST=${PGHOST} 
       - PGUSER=${PGUSER}
       - PGPORT=5432

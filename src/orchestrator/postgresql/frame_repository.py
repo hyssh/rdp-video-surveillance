@@ -1,8 +1,8 @@
 import logging
 import os
 from urllib.parse import urlparse
-from typing import Dict, Any, List, Optional
-from psycopg2.extras import execute_batch
+from typing import Dict, Any, List, Optional, Tuple
+from psycopg2.extras import execute_batch, execute_values
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +172,44 @@ def update_frame_with_embedding(frame_id: int, description: str, embedding_vecto
     except Exception as e:
         logger.error(f"Failed to update frame with embedding: {str(e)}")
         return False
+
+def update_frames_with_embeddings(updates: List[Tuple[int, str, list]], page_size: int = 100) -> int:
+    """
+    Bulk update frames with image description and embedding in a single transaction.
+
+    Args:
+        updates: List of (frame_id, description, embedding_vector) tuples
+        page_size: Rows per statement sent to the database
+
+    Returns:
+        int: Number of frames updated (0 on failure or empty input)
+    """
+    from .connection import DatabaseManager
+
+    if not updates:
+        return 0
+
+    update_sql = """
+        UPDATE frames AS f
+        SET image_description = v.description, embedding = v.embedding::vector
+        FROM (VALUES %s) AS v(id, description, embedding)
+        WHERE f.id = v.id
+        RETURNING f.id
+    """
+
+    try:
+        rows = [(fid, desc, [float(x) for x in vec]) for fid, desc, vec in updates]
+        with DatabaseManager() as cursor:
+            updated = execute_values(
+                cursor, update_sql, rows,
+                template="(%s::int, %s::text, %s::float8[])",
+                page_size=page_size, fetch=True,
+            )
+            logger.info(f"Bulk updated {len(updated)} frames with embedding vectors")
+            return len(updated)
+    except Exception as e:
+        logger.error(f"Failed to bulk update frames with embeddings: {str(e)}")
+        return 0
 
 def search_similar_frames(query_vector: list, threshold: float = 0.75, max_results: int = 10) -> List[Dict[str, Any]]:
     """

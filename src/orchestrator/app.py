@@ -1,5 +1,7 @@
+import asyncio
 import gc
 import os
+import shutil
 import cv2
 import base64
 import logging
@@ -9,12 +11,13 @@ from typing import Dict, Any, Optional
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from dotenv import load_dotenv
 from azure.storage.blob import BlobServiceClient, ContentSettings
-from postgresql import insert_video, insert_frames, update_frame_with_embedding, get_frames_by_video_id, get_video_by_id, update_video_with_security_review
+from postgresql import insert_video, insert_frames, update_frames_with_embeddings, get_frames_by_video_id, get_video_by_id, update_video_with_security_review
 # from agents.image_analyzer.image_analyzer_agent import get_image_analyzer_agent, image_analyzer_agent_run
 from agents.security_reviewer.security_reviewer_agent import get_or_create_chat_completion_agent, security_reviewer_agent_run
 from agents.chat_completion.chat_completion_agent import get_chat_completion_agent_thread, chat_completion_agent_run
 from semantic_kernel.connectors.ai.open_ai.settings.azure_open_ai_settings import AzureOpenAISettings
 from semantic_kernel.connectors.ai.open_ai import AzureTextEmbedding
+from retry_utils import retry_async
 
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
@@ -31,21 +34,37 @@ AzureOpenAISettings(
     endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
     api_version=os.getenv("AZURE_TEXT_EMBEDDING_API_VERSION", "2024-12-01-preview"),
 )
-        
+
+# Bound concurrent OmniParser calls, and set explicit HTTP timeouts (seconds)
+OMNIPARSER_SEMAPHORE = asyncio.Semaphore(max(1, int(os.getenv("MAX_CONCURRENT_OMNIPARSER", "2"))))
+OMNIPARSER_TIMEOUT = (
+    float(os.getenv("OMNIPARSER_CONNECT_TIMEOUT", "5")),
+    float(os.getenv("OMNIPARSER_READ_TIMEOUT", "120")),
+)
+HEALTHCHECK_TIMEOUT = (
+    float(os.getenv("HEALTHCHECK_CONNECT_TIMEOUT", "3")),
+    float(os.getenv("HEALTHCHECK_READ_TIMEOUT", "5")),
+)
+EMBEDDING_BATCH_SIZE = max(1, int(os.getenv("EMBEDDING_BATCH_SIZE", "16")))
+
+
+def omniparser_base_url() -> str:
+    return f"http://{os.getenv('OMNIPARSER_HOST')}:{os.getenv('OMNIPARSER_PORT')}"
+
 
 @orchestrator.get("/")
 def read_root():
-    return {"message": "Orchstrator API is running"}
+    return {"message": "Orchestrator API is running"}
 
 @orchestrator.get("/healthcheck")
 async def healthcheck():
     """
-    Call the Omniparser API with a base64 encoded image
+    Check that the Omniparser API is reachable using its lightweight /health endpoint
     """
-    omniparser_url = f"http://{os.getenv("OMNIPARSER_HOST")}:{os.getenv("OMNIPARSER_PORT")}/test_result_image/"
-    
-    # Send the base64 image to the Florence API
-    response = requests.get(omniparser_url)
+    try:
+        response = await asyncio.to_thread(requests.get, f"{omniparser_base_url()}/health", timeout=HEALTHCHECK_TIMEOUT)
+    except requests.RequestException as e:
+        raise HTTPException(status_code=503, detail=f"Omniparser API unreachable: {str(e)}")
     if response.status_code == 200:        
         return {"message":"Orchestrator API and Omniparser API are running successfully"}
     else:
@@ -71,16 +90,6 @@ async def upload_to_blob_storage(file: UploadFile, container_name: str, blob_nam
         if not connection_string:
             raise HTTPException(status_code=500, detail="Azure Storage connection string not configured or missing")
             
-        # Create the BlobServiceClient
-        blob_service_client = BlobServiceClient.from_connection_string(connection_string)
-        
-        # Get a reference to the container
-        container_client = blob_service_client.get_container_client(container_name)
-        
-        # Create container if it doesn't exist
-        if not container_client.exists():
-            container_client.create_container()
-        
         # Determine blob name - use provided name, original filename, or generate UUID
         if not blob_name:
             # Use original filename or generate a unique ID
@@ -91,20 +100,15 @@ async def upload_to_blob_storage(file: UploadFile, container_name: str, blob_nam
                 ext = ".jpg"
                 blob_name = f"{uuid.uuid4()}{ext}"
         
-        # Get blob client
-        blob_client = container_client.get_blob_client(blob_name)
-        
         # Read file content
         file_content = await file.read()
         
         # Determine content type
         content_type = file.content_type or "application/octet-stream"
         
-        # Upload the file
-        blob_client.upload_blob(
-            file_content, 
-            overwrite=True,
-            content_settings=ContentSettings(content_type=content_type)
+        # Upload the file (blocking Azure SDK calls run in a worker thread)
+        blob_url = await asyncio.to_thread(
+            _upload_blob_sync, connection_string, container_name, blob_name, file_content, content_type
         )
         
         # Return blob information
@@ -114,11 +118,25 @@ async def upload_to_blob_storage(file: UploadFile, container_name: str, blob_nam
             "container_name": container_name,
             "size_bytes": len(file_content),
             "content_type": content_type,
-            "url": blob_client.url
+            "url": blob_url
         }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
+
+
+def _upload_blob_sync(connection_string: str, container_name: str, blob_name: str, file_content: bytes, content_type: str) -> str:
+    blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+    container_client = blob_service_client.get_container_client(container_name)
+    if not container_client.exists():
+        container_client.create_container()
+    blob_client = container_client.get_blob_client(blob_name)
+    blob_client.upload_blob(
+        file_content,
+        overwrite=True,
+        content_settings=ContentSettings(content_type=content_type)
+    )
+    return blob_client.url
 
 
 async def upload_file_endpoint(file: UploadFile = File(...), container_name: str = "videos"):
@@ -139,13 +157,13 @@ async def store_video_frame_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]
             raise HTTPException(status_code=400, detail="No video metadata provided")
             
         # Insert video metadata and get video ID
-        video_id = insert_video(video_data)
+        video_id = await asyncio.to_thread(insert_video, video_data)
         if not video_id:
             raise HTTPException(status_code=500, detail="Failed to insert video metadata")
             
         # Insert frame metadata
         frames_data = metadata.get("frames", {}).get("details", [])
-        frames_result = insert_frames(video_id, frames_data)
+        frames_result = await asyncio.to_thread(insert_frames, video_id, frames_data)
         logging.info(f"Inserted frames for video ID {video_id}")
         # Return the result
         return {
@@ -158,22 +176,39 @@ async def store_video_frame_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]
         raise HTTPException(status_code=500, detail=f"Failed to store metadata: {str(e)}")
 
 
+def _post_omniparser(base64_image: str) -> Dict[str, Any]:
+    response = requests.post(
+        f"{omniparser_base_url()}/parse/",
+        json={"base64_image": base64_image},
+        timeout=OMNIPARSER_TIMEOUT,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+async def _post_omniparser_limited(base64_image: str) -> Dict[str, Any]:
+    # Semaphore is taken per attempt so backoff sleeps don't hold an OmniParser slot
+    async with OMNIPARSER_SEMAPHORE:
+        return await asyncio.to_thread(_post_omniparser, base64_image)
+
+
 async def call_omniparser(base64_image: str) -> Dict[str, Any]:
     """
-    Call the Omniparser API with a base64 encoded image
+    Call the Omniparser API with a base64 encoded image (bounded concurrency, timeouts, retry on 429/5xx)
     """
-    omniparser_url = f"http://{os.getenv("OMNIPARSER_HOST")}:{os.getenv("OMNIPARSER_PORT")}/parse/"
-    
-    # Send the base64 image to the Florence API
-    response = requests.post(omniparser_url, json={"base64_image": base64_image})
-    if response.status_code == 200:
-        json_response = response.json()
-        for item in json_response['parsed_content_list']:
-            if 'bbox' in item:
-                del item['bbox']
-        return json_response
-    else:
-        raise HTTPException(status_code=response.status_code, detail=f"Omniparser API error: {response.text}")
+    try:
+        json_response = await retry_async(lambda: _post_omniparser_limited(base64_image), description="Omniparser call")
+    except requests.HTTPError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=f"Omniparser API error: {e.response.text}")
+    for item in json_response['parsed_content_list']:
+        if 'bbox' in item:
+            del item['bbox']
+    return json_response
+
+
+def _download_blob_sync(blob_service_client: BlobServiceClient, container_name: str, blob_name: str) -> bytes:
+    blob_client = blob_service_client.get_container_client(container_name).get_blob_client(blob_name)
+    return blob_client.download_blob().readall()
 
 
 async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any]):
@@ -184,7 +219,7 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
     blob_service_client = BlobServiceClient.from_connection_string(os.getenv("AZURE_STORAGE_CONNECTION_STRING", ""))
 
     logging.info(f"Updating image review and text vector for video ID: {preprocess_result['video_id']}")    
-    review_images = get_frames_by_video_id(preprocess_result['video_id'])
+    review_images = await asyncio.to_thread(get_frames_by_video_id, preprocess_result['video_id'])
     logging.info(f"Found {len(review_images)} frames for video ID {preprocess_result['video_id']}")
 
     if os.getenv("CHAT_COMPLETION_ENABLE", "true").lower() == "true":     
@@ -192,17 +227,49 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
             service_id="azure-text-embedding",
             api_key=os.getenv("AZURE_TEXT_EMBEDDING_APIKEY"),
             endpoint=os.getenv("AZURE_TEXT_EMBEDDING_ENDPOINT"),
-            deployment_name=os.getenv("AZURE_AI_AGENT_EMBEDDING_MODEL_DEPLOYMENT_NAME")
+            deployment_name=os.getenv("AZURE_AI_AGENT_EMBEDDING_MODEL_DEPLOYMENT_NAME") or os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME")
             )
         
         logging.info(f"Using Azure Text Embedding with deployment name: {azuretxtembedding}")
         
-        chat_completion_agent, chat_completion_agent_thread = await get_chat_completion_agent_thread()
+        chat_completion_agent, chat_completion_agent_thread = await get_chat_completion_agent_thread(
+            thread_id=f"image_analyzer_video_{preprocess_result['video_id']}_{uuid.uuid4().hex[:8]}"
+        )
 
         if not chat_completion_agent:
             raise HTTPException(status_code=500, detail="Image analyzer agent not found or failed to initialize")
         logging.info(f"Using image analyzer agent: {chat_completion_agent}")
-        
+
+        def run_agent(image_b64, items, frame_note=None):
+            return retry_async(
+                lambda: chat_completion_agent_run(
+                    agent=chat_completion_agent,
+                    base64_image=image_b64,
+                    omniparser_response=items,
+                    thread=chat_completion_agent_thread,
+                    user_input=frame_note
+                ),
+                description="GPT image analysis",
+            )
+
+        # Frames are analyzed in order (shared chat thread); embeddings are generated and stored in batches
+        pending = []  # (frame_id, description)
+
+        async def flush_pending():
+            if not pending:
+                return
+            descriptions = [description for _, description in pending]
+            embeddings = await retry_async(
+                lambda: azuretxtembedding.generate_embeddings(descriptions),
+                description="Embedding generation",
+            )
+            updates = [(frame_id, description, embeddings[i].tolist()) for i, (frame_id, description) in enumerate(pending)]
+            updated = await asyncio.to_thread(update_frames_with_embeddings, updates)
+            if updated != len(updates):
+                logging.error(f"Bulk update touched {updated} of {len(updates)} frames")
+                raise HTTPException(status_code=500, detail=f"Failed to update frames with description and embedding ({updated}/{len(updates)})")
+            logging.info(f"Updated {updated} frames with description and embedding")
+            pending.clear()
 
         for image in review_images:
             logging.info(f"Processing image {image['id']} with URL: {image.get('url', 'N/A')} and blob name: {image.get('blob_name', 'N/A')}")
@@ -216,12 +283,17 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
                     logging.info(f"Chat history length is {len(chat_completion_agent_thread._chat_history.messages)}, no trimming needed")
                 
                 # read the image from Azure Blob Storage
-                container_client = blob_service_client.get_container_client(image["container_name"])
-                blob_client = container_client.get_blob_client(image["blob_name"])
-                blob_data = blob_client.download_blob().readall()
+                blob_data = await asyncio.to_thread(
+                    _download_blob_sync, blob_service_client, image["container_name"], image["blob_name"]
+                )
 
                 # Convert the image to base64
                 base64_image = base64.b64encode(blob_data).decode('utf-8')
+
+                frame_note = (
+                    f"This is frame_id={image['id']} at frame_timestamp={image.get('frame_timestamp')}. "
+                    "Analyze it for suspicious activities or security threats and cite this frame_id and frame_timestamp in your findings."
+                )
 
                 if os.getenv("OMNIPARSER_ENABLE", "true").lower() == "true":
                     logging.info("Omniparser is enabled, calling Omniparser API")
@@ -237,38 +309,29 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
                         item_list.append(f"type:{item['type']} interactivity:{item['interactivity']} content:{item['content']}")
                     item_set = set(item_list)
                                         # Use the thread in your agent call
-                    image_analysis_result_by_chatcompletionagent = await chat_completion_agent_run(
-                        agent=chat_completion_agent, 
-                        base64_image=som_image_base64, 
-                        omniparser_response=item_set, 
-                        thread=chat_completion_agent_thread
-                    )
+                    image_analysis_result_by_chatcompletionagent = await run_agent(som_image_base64, item_set, frame_note)
                     logging.info(f"Image analysis result: {image_analysis_result_by_chatcompletionagent}")
                 else:
                     logging.info("Omniparser is disabled, using base64 image directly")
                     # Use the base64 image directly without calling Omniparser
                     item_set = set()
                     # Use the thread in your agent call
-                    image_analysis_result_by_chatcompletionagent = await chat_completion_agent_run(
-                        agent=chat_completion_agent, 
-                        base64_image=base64_image, 
-                        omniparser_response=item_set, 
-                        thread=chat_completion_agent_thread
-                    )
+                    image_analysis_result_by_chatcompletionagent = await run_agent(base64_image, item_set, frame_note)
                     logging.info(f"Image analysis result: {image_analysis_result_by_chatcompletionagent}")
 
-                # Update the frame with the description and embedding
-                embedding_vector = await azuretxtembedding.generate_embeddings([str(image_analysis_result_by_chatcompletionagent)])
-                logging.info(f"Generated embedding vector for image {image['id']}: {embedding_vector}")
-                if update_frame_with_embedding(image["id"], str(image_analysis_result_by_chatcompletionagent), embedding_vector[0].tolist()):
-                    logging.info(f"Updated frame {image['id']} with description and embedding")
-                else:
-                    logging.error(f"Failed to update frame {image['id']} with description and embedding")
-                    raise HTTPException(status_code=500, detail=f"Failed to update frame {image['id']} with description and embedding")
+                pending.append((image["id"], str(image_analysis_result_by_chatcompletionagent)))
+                if len(pending) >= EMBEDDING_BATCH_SIZE:
+                    await flush_pending()
                 
             except Exception as e:
                 logging.error(f"Failed to analyze image {image.get('url')}: {str(e)}")
                 raise HTTPException(status_code=500, detail=f"{str(e)}")
+
+        try:
+            await flush_pending()
+        except Exception as e:
+            logging.error(f"Failed to embed/store remaining frames: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"{str(e)}")
             
         logging.info("Chat history agent thread completed successfully")
         logging.info(f"chat history agent in thread : {chat_completion_agent_thread}")
@@ -303,8 +366,8 @@ async def update_video_review_and_text(preprocess_result: Dict[str, Any]):
             logging.info(f"Using security reviewer agent: {security_reviewer_agent}")
 
             # Get frames for the video
-            review_images = get_frames_by_video_id(preprocess_result['video_id'])
-            logging.info(f"Found {len(review_images)} frames for video ID {review_images}")
+            review_images = await asyncio.to_thread(get_frames_by_video_id, preprocess_result['video_id'])
+            logging.info(f"Found {len(review_images)} frames for video ID {preprocess_result['video_id']}")
             
             # Prepare the input for the security reviewer agent - format as list of dictionaries
             image_analysis_results = []
@@ -320,11 +383,13 @@ async def update_video_review_and_text(preprocess_result: Dict[str, Any]):
                 logging.warning(f"No image descriptions found for video ID {preprocess_result['video_id']}")
                 raise HTTPException(status_code=400, detail="No image descriptions found for video ID")
                 
-            security_review_result = await security_reviewer_agent_run(
-                agent=security_reviewer_agent, 
-                image_analysis_results=image_analysis_results,
-                custom_prompt=custom_prompt,
-                # thread=thread
+            security_review_result = await retry_async(
+                lambda: security_reviewer_agent_run(
+                    agent=security_reviewer_agent, 
+                    image_analysis_results=image_analysis_results,
+                    custom_prompt=custom_prompt,
+                ),
+                description="GPT security review",
             )
                 
             if not security_review_result:
@@ -342,7 +407,7 @@ async def update_video_review_and_text(preprocess_result: Dict[str, Any]):
                 review_content = str(security_review_result)
             
             # Update the video metadata with the security review result
-            if update_video_with_security_review(preprocess_result['video_id'], description=review_content):
+            if await asyncio.to_thread(update_video_with_security_review, preprocess_result['video_id'], description=review_content):
                 logging.info(f"Successfully updated video {preprocess_result['video_id']} with security review")            
             else:
                 logging.error(f"Failed to update video {preprocess_result['video_id']} with security review result")
@@ -375,11 +440,11 @@ async def ingest_video_v2(file: UploadFile = File(...), container_name: str = Fo
         await file.seek(0)
         
         # Save uploaded file to temp location
-        with open(temp_filename, "wb") as temp_file:
-            temp_file.write(await file.read())
+        await asyncio.to_thread(_save_upload_sync, file.file, temp_filename)
         
-        # Split the video into frames
-        frame_paths = split_video(
+        # Split the video into frames (OpenCV + blob uploads are blocking)
+        frame_paths = await asyncio.to_thread(
+            split_video,
             video_path=temp_filename, 
             blob_conn_str=os.getenv("AZURE_STORAGE_CONNECTION_STRING","MISSING"),
             output_dir=frames_container,
@@ -445,6 +510,11 @@ async def ingest_video_v2(file: UploadFile = File(...), container_name: str = Fo
                     
         raise HTTPException(status_code=500, detail=f"Failed to process video: {str(e)}")
     
+
+
+def _save_upload_sync(source, destination_path: str):
+    with open(destination_path, "wb") as temp_file:
+        shutil.copyfileobj(source, temp_file)
 
 
 def split_video(video_path: str, blob_conn_str: str, output_dir: str=r"preprocess", interval=3):

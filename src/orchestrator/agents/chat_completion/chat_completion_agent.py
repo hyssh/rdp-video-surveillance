@@ -1,4 +1,5 @@
 import os
+import uuid
 import yaml
 import asyncio
 import logging
@@ -107,7 +108,15 @@ async def chat(agent: ChatCompletionAgent,
 
 
 
-async def get_chat_completion_agent_thread():
+async def get_chat_completion_agent_thread(thread_id: Optional[str] = None):
+    """
+    Create the image analyzer agent and a chat thread.
+
+    Args:
+        thread_id: Optional thread ID. Defaults to a unique ID per call so concurrent
+            requests never share a thread identifier.
+    """
+    thread_id = thread_id or f"image_analyzer_thread_{uuid.uuid4().hex}"
     agent = ChatCompletionAgent(
         service=AzureChatCompletion(
             api_key=os.getenv("AZURE_OPENAI_APIKEY"),
@@ -116,12 +125,12 @@ async def get_chat_completion_agent_thread():
             api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview"),
         ),
         name="ImageAnalyzerAgent",
-        instructions=load_prompts(),
+        instructions=await asyncio.to_thread(load_prompts),
     )
     
     thread = ChatHistoryAgentThread(
         chat_history=ChatHistory(),
-        thread_id="image_analyzer_thread"
+        thread_id=thread_id
     )
     return agent, thread
 

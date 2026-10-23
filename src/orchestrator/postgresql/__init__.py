@@ -9,6 +9,7 @@ from .frame_repository import (
     insert_frames, 
     get_frames_by_video_id, 
     update_frame_with_embedding,
+    update_frames_with_embeddings,
     search_similar_frames,
     get_frames_without_embeddings
 )
@@ -24,6 +25,7 @@ __all__ = [
     'insert_frames',
     'get_frames_by_video_id',
     'update_frame_with_embedding',
+    'update_frames_with_embeddings',
     'search_similar_frames',
     'get_frames_without_embeddings',
     'update_video_with_security_review'

@@ -49,7 +49,11 @@ def initialize_schemas():
         CREATE INDEX IF NOT EXISTS idx_frames_blob_name ON frames(blob_name)
         """,
         """
-        -- Create a GIN index for vector similarity search
+        CREATE INDEX IF NOT EXISTS idx_frames_video_id_timestamp ON frames(video_id, frame_timestamp)
+        """,
+        """
+        -- IVFFlat (not GIN) index for approximate vector similarity search.
+        -- The name idx_frames_embedding is kept so existing databases are not given a duplicate index.
         CREATE INDEX IF NOT EXISTS idx_frames_embedding ON frames USING ivfflat (embedding vector_l2_ops)
         WITH (lists = 100)
         """
