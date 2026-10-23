@@ -13,7 +13,7 @@ import re
 from contextlib import asynccontextmanager
 from fastapi.exceptions import RequestValidationError
 from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from dotenv import load_dotenv
 from azure.storage.blob import BlobServiceClient, ContentSettings
 from postgresql import (
@@ -91,7 +91,14 @@ def omniparser_base_url() -> str:
 
 @orchestrator.get("/")
 def read_root():
-    return {"message": "Orchestrator API is running"}
+    return {"message": "Orchestrator API is running", "ui": "/ui", "docs": "/docs"}
+
+
+@orchestrator.get("/ui", include_in_schema=False)
+async def auditor_ui():
+    """Serve the self-contained auditor web UI"""
+    return FileResponse(os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "index.html"),
+                        media_type="text/html")
 
 @orchestrator.get("/healthcheck")
 async def healthcheck():

@@ -12,7 +12,7 @@ The core challenge addressed is the lack of scalable resources to manually revie
 
 - **Ingestion Layer**: Periodic or scheduled crawling of RDP session video files; not in scope of this repo
 - **Storage & Enrichment**: Videos are sliced, annotated, and enriched with metadata to support downstream analysis
-- **Post-Processing**: On-demand querying and summarization via a chat interface or UI, powered by AI search and kernel memory (planned; see [Known limitations / Roadmap](#known-limitations--roadmap))
+- **Post-Processing**: On-demand querying and summarization via a chat interface or UI, powered by AI search and kernel memory (minimal UI available now; richer reporting planned; see [Known limitations / Roadmap](#known-limitations--roadmap))
 - **AI Integration**: Object recognition models (e.g., Florence) identify UI elements and user actions within video frames
 - **Security Focus**: Supports both detection (e.g., anomaly identification) and prevention (e.g., session termination) strategies; prevention is not in scope of this repo
 - **Compliance Alignment**: Designed to align with regulatory requirements, including audit trails and risk classification; not in scope of this repo
@@ -42,7 +42,7 @@ The orchestrator service manages the overall workflow:
 ### AI Agents
 
 The system includes specialized AI agents for different types of analysis:
-- **Chat Completion Agent** (`agents/chat_completion`): Analyzes each extracted frame (image + OmniParser output) and produces a structured per-frame result. A natural-language chat/query interface is planned but not yet exposed.
+- **Chat Completion Agent** (`agents/chat_completion`): Analyzes each extracted frame (image + OmniParser output) and produces a structured per-frame result. Question answering is exposed as `POST /videos/{id}/ask` and in the Auditor UI.
 - **Image Analyzer Agent** (`agents/image_analyzer`): Standalone frame analyzer (under development); shares the same prompt format as the Chat Completion agent.
 - **Security Reviewer Agent** (`agents/security_reviewer`): Summarizes all per-frame results into one session report with a manual-review flag, `risk_score` (0-100), `risk_level` (low/medium/high/critical) and per-observation evidence (frame, timestamp, confidence).
 
@@ -85,6 +85,8 @@ rdp-video-surveillance/
 │   │   └── weights/        # Model weights (git-ignored, created by setup_weights)
 │   └── orchestrator/       # Orchestration service
 │       ├── app.py          # FastAPI app (port 8082): endpoints + background pipeline
+│       ├── static/
+│       │   └── index.html  # Auditor web UI (served at /ui)
 │       ├── models.py       # Pydantic request/response models
 │       ├── errors.py       # Structured error responses
 │       ├── retry_utils.py  # Retry/backoff helpers for Azure calls
@@ -153,13 +155,15 @@ The first start takes several minutes (image build + model load). Orchestrator: 
 
 bash:
 ```bash
-curl http://localhost:8082/            # {"message":"Orchestrator API is running"}
+curl http://localhost:8082/            # {"message":"Orchestrator API is running","ui":"/ui","docs":"/docs"}
 curl http://localhost:8082/healthcheck # orchestrator can reach OmniParser
 curl http://localhost:8081/health      # OmniParser is up
 ```
 Windows: use `curl.exe` (Windows 10+) with the same URLs; in PowerShell plain `curl` is an alias of `Invoke-WebRequest`. Interactive API docs: `http://localhost:8082/docs` (FastAPI Swagger UI; OmniParser has its own at `http://localhost:8081/docs`).
 
 ### 5. Ingest a video (async)
+
+> **Easiest path:** open the [Auditor UI](#auditor-ui) at `http://localhost:8082/ui` and do steps 5-8 in the browser (upload, progress, results, questions). The curl steps below are the same flow through the API.
 
 No sample recording ships with the repo (`*.mp4` is git-ignored): bring a 20-60 second RDP capture. `POST /v2/ingest-video/` takes a multipart form: `file` (required) plus optional `container_name` (default `videos`) and `frames_container` (default `frames`). It returns **202 immediately** with a job id; the analysis runs in the background.
 
@@ -251,13 +255,25 @@ Sample auditor questions:
 4. Did the user log in to or connect to another system or server during the session?
 5. Was any data moved off the machine (download, upload, copy to external location), and what was the evidence and confidence?
 
+## Auditor UI
+
+A minimal single-page UI is served by the orchestrator at **`http://localhost:8082/ui`** (no extra service or build step). It uses the same API as above and lets an auditor:
+
+- upload a recording and watch live job progress (status, stage, frames done/failed, warnings);
+- browse the paginated video list with risk badges;
+- open a video to see its summary, risk, and frames;
+- ask questions in the ask box and see the answer with the matching frames.
+
+Note: frame thumbnails use the blob URLs returned by the API. If the storage container is private, the browser cannot load them and thumbnails may not render (timestamps and descriptions still show). There is no login; see the roadmap.
+
 ## API reference
 
-Orchestrator, `http://localhost:8082` (interactive docs at `/docs`).
+Orchestrator, `http://localhost:8082` (UI at `/ui`, interactive docs at `/docs`).
 
 | Method | Path | Purpose | Success response |
 |---|---|---|---|
-| GET | `/` | Liveness | 200 `{"message": ...}` |
+| GET | `/ui` | Auditor web UI | 200 HTML |
+| GET | `/` | Liveness and links | 200 `{"message", "ui", "docs"}` |
 | GET | `/healthcheck` | Orchestrator can reach OmniParser | 200 |
 | POST | `/v2/ingest-video/` | Submit a video (multipart `file`; form `container_name`, `frames_container`; query `wait=false`) | 202 `{job_id, status, status_url}`; with `wait=true` 200 `{status, video_id, frames, frames_failed, job_id}` |
 | GET | `/jobs/{job_id}` | Job progress | 200 `{job_id, status, stage, frames_done, frames_total, frames_failed, warnings[], video_id, error, created_at, updated_at}` |
@@ -304,9 +320,10 @@ Throughput is bounded by a single GPU and by Azure OpenAI rate limits; raising c
 
 - **Jobs run in-process**: they execute inside the orchestrator process and are lost on restart. At startup, jobs still non-terminal are marked `failed` with `interrupted by restart`; this is wrong when running several uvicorn workers (one worker would fail another's live jobs), so keep a single worker.
 - **No retry endpoint**: a `failed` job (or a video with `frames_failed > 0`) must be re-ingested by uploading again; blobs are stored as `{job_id}/{filename}`, so re-uploads never overwrite.
-- **Stale-job cleanup is partial**: only the restart sweep above; jobs that hang while the process stays up are not detected or removed.
-- **No UI**: API (and `/docs`) only.
-- **No authentication** on the APIs (demo only).
+- **Stale-job cleanup is partial and not multi-worker-safe**: only the restart sweep above; jobs that hang while the process stays up are not detected or removed.
+- **Minimal UI only**: the Auditor UI covers upload, browse and ask; no reports/export, search across videos, or user management.
+- **No durable queue**: jobs run in-process and are lost on restart (see above); a persistent queue/worker is the planned fix.
+- **No authentication** on the UI or APIs (demo only).
 - **Azure-only**: Blob Storage, Azure OpenAI and PostgreSQL are required; there is no local mode.
 - **Frame sampling**: fixed 1 frame / 3 s; short-lived on-screen events can be missed.
 - **Model output is not ground truth**: verdicts come from an LLM; always check the cited frame/timestamp before acting.
