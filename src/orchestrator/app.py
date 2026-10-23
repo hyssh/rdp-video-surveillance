@@ -27,10 +27,9 @@ from postgresql import (
 # from agents.image_analyzer.image_analyzer_agent import get_image_analyzer_agent, image_analyzer_agent_run
 from agents.security_reviewer.security_reviewer_agent import get_or_create_chat_completion_agent, security_reviewer_agent_run
 from agents.chat_completion.chat_completion_agent import (
-    get_chat_completion_agent_thread, chat_completion_agent_run, get_qa_agent, qa_agent_run
+    get_chat_completion_agent_session, chat_completion_agent_run, get_qa_agent, qa_agent_run
 )
-from semantic_kernel.connectors.ai.open_ai.settings.azure_open_ai_settings import AzureOpenAISettings
-from semantic_kernel.connectors.ai.open_ai import AzureTextEmbedding
+from agents import llm
 from retry_utils import retry_async
 import media_utils
 from analysis_utils import parse_risk, parse_frame_analysis, elements_from_omniparser, image_size, summary_text
@@ -78,15 +77,6 @@ ERROR_RESPONSES = {
     for code in (400, 404, 422, 502, 503)
 }
 
-AzureOpenAISettings(
-    embedding_deployment_name=os.getenv("AZURE_AI_AGENT_EMBEDDING_MODEL_DEPLOYMENT_NAME", "text-embedding-ada-002"),
-    text_deployment_name=os.getenv("AZURE_AI_AGENT_CHAT_MODEL_DEPLOYMENT_NAME", "gpt-4.1"),
-    chat_deployment_name=os.getenv("AZURE_AI_AGENT_CHAT_MODEL_DEPLOYMENT_NAME", "gpt-4.1"),
-    api_key=os.getenv("AZURE_OPENAI_APIKEY"),
-    endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    api_version=os.getenv("AZURE_TEXT_EMBEDDING_API_VERSION", "2024-12-01-preview"),
-)
-
 # Bound concurrent OmniParser calls, and set explicit HTTP timeouts (seconds)
 OMNIPARSER_SEMAPHORE = asyncio.Semaphore(max(1, int(os.getenv("MAX_CONCURRENT_OMNIPARSER", "2"))))
 OMNIPARSER_TIMEOUT = (
@@ -109,6 +99,7 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 APP_DIR = os.path.join(STATIC_DIR, "app")
 DEMO_ASSETS_DIR = os.path.join(STATIC_DIR, "demo_assets")
 _SOURCE_LOCKS: Dict[int, asyncio.Lock] = {}
+_CLIP_LOCKS: Dict[str, asyncio.Lock] = {}
 
 
 def omniparser_base_url() -> str:
@@ -291,13 +282,14 @@ async def _job_update(job_id: Optional[str], **fields):
         logging.warning(f"Could not update job {job_id} ({fields}): {e}")
 
 
-def _embedding_service() -> AzureTextEmbedding:
-    return AzureTextEmbedding(
-        service_id="azure-text-embedding",
-        api_key=os.getenv("AZURE_TEXT_EMBEDDING_APIKEY"),
-        endpoint=os.getenv("AZURE_TEXT_EMBEDDING_ENDPOINT"),
-        deployment_name=os.getenv("AZURE_AI_AGENT_EMBEDDING_MODEL_DEPLOYMENT_NAME")
-    )
+def _embedding_service():
+    return llm.make_embedding_client()
+
+
+def _require_llm_config(stage: str, job_id: Optional[str] = None, chat: bool = True) -> None:
+    missing = llm.missing_llm_config(chat=chat)
+    if missing:
+        raise ApiError(400, "missing_config", f"Missing required environment variable(s): {', '.join(missing)}", stage, job_id)
 
 
 async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any], job_id: Optional[str] = None):
@@ -328,8 +320,8 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
         blob_service_client = BlobServiceClient.from_connection_string(os.getenv("AZURE_STORAGE_CONNECTION_STRING", ""))
     azuretxtembedding = _embedding_service()
     with api_errors(stage, "openai", job_id):
-        chat_completion_agent, chat_completion_agent_thread = await get_chat_completion_agent_thread(
-            thread_id=f"image_analyzer_video_{video_id}_{uuid.uuid4().hex[:8]}"
+        chat_completion_agent, chat_completion_agent_session = await get_chat_completion_agent_session(
+            session_id=f"image_analyzer_video_{video_id}_{uuid.uuid4().hex[:8]}"
         )
     logging.info(f"Using image analyzer agent: {chat_completion_agent}")
 
@@ -339,7 +331,7 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
                 agent=chat_completion_agent,
                 base64_image=image_b64,
                 omniparser_response=items,
-                thread=chat_completion_agent_thread
+                session=chat_completion_agent_session
             ),
             description="GPT image analysis",
         )
@@ -366,14 +358,14 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
         try:
             descriptions = [description for _, description, _ in batch]
             embeddings = await retry_async(
-                lambda: azuretxtembedding.generate_embeddings(descriptions),
+                lambda: llm.embed_texts(azuretxtembedding, descriptions),
                 description="Embedding generation",
             )
         except Exception as e:
             await fail_frames(len(batch), e, "openai", "Embedding generation")
             return
         try:
-            updates = [(frame_id, description, embeddings[i].tolist()) for i, (frame_id, description, _) in enumerate(batch)]
+            updates = [(frame_id, description, embeddings[i]) for i, (frame_id, description, _) in enumerate(batch)]
             updated = await asyncio.to_thread(update_frames_with_embeddings, updates)
         except Exception as e:
             await fail_frames(len(batch), e, "database", "Frame update")
@@ -398,9 +390,8 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
         logging.info(f"Processing image {image['id']} with URL: {image.get('url', 'N/A')} and blob name: {image.get('blob_name', 'N/A')}")
         source = "storage"
         try:
-            if len(chat_completion_agent_thread._chat_history.messages) > 33:
-                logging.info("Trimming chat history to the last 33 messages")
-                chat_completion_agent_thread._chat_history.messages = chat_completion_agent_thread._chat_history.messages[-33:]
+            if llm.trim_session(chat_completion_agent_session, 33):
+                logging.info("Trimmed chat history to the last 33 messages")
 
             # read the image from Azure Blob Storage
             blob_data = await asyncio.to_thread(
@@ -535,11 +526,6 @@ def _parse_risk_level(review_content: str) -> Optional[str]:
 
 def _required_ingest_env() -> list:
     names = ["AZURE_STORAGE_CONNECTION_STRING"]
-    if os.getenv("CHAT_COMPLETION_ENABLE", "true").lower() == "true":
-        names += [
-            "AZURE_OPENAI_APIKEY", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_CHAT_DEPLOYMENT_NAME",
-            "AZURE_TEXT_EMBEDDING_APIKEY", "AZURE_TEXT_EMBEDDING_ENDPOINT", "AZURE_AI_AGENT_EMBEDDING_MODEL_DEPLOYMENT_NAME",
-        ]
     if os.getenv("OMNIPARSER_ENABLE", "true").lower() == "true":
         names += ["OMNIPARSER_HOST", "OMNIPARSER_PORT"]
     return names
@@ -668,6 +654,8 @@ async def ingest_video_v2(
     Poll GET /jobs/{job_id} for progress. With ?wait=true the pipeline runs inline and the result is returned.
     """
     require_env(_required_ingest_env(), "validating_request")
+    if os.getenv("CHAT_COMPLETION_ENABLE", "true").lower() == "true":
+        _require_llm_config("validating_request")
     if not file.filename:
         raise ApiError(400, "invalid_input", "Uploaded file has no filename", "validating_request")
 
@@ -754,15 +742,15 @@ async def ask_video(video_id: int, body: AskRequest):
     """
     stage = "ask"
     await _get_video_or_404(video_id, stage)
-    require_env(["AZURE_TEXT_EMBEDDING_APIKEY", "AZURE_TEXT_EMBEDDING_ENDPOINT", "AZURE_AI_AGENT_EMBEDDING_MODEL_DEPLOYMENT_NAME"], stage)
+    _require_llm_config(stage, chat=False)
 
     with api_errors("embedding_question", "openai"):
         embedding_service = _embedding_service()
         embeddings = await retry_async(
-            lambda: embedding_service.generate_embeddings([body.question]),
+            lambda: llm.embed_texts(embedding_service, [body.question]),
             description="Question embedding",
         )
-        query_vector = embeddings[0].tolist()
+        query_vector = embeddings[0]
 
     with api_errors("searching_frames", "database"):
         rows = await asyncio.to_thread(search_similar_frames, query_vector, None, body.top_k, video_id, True)
@@ -781,9 +769,7 @@ async def ask_video(video_id: int, body: AskRequest):
     answer, note = None, None
     if not rows:
         note = "No analyzed frames with embeddings were found for this video."
-    elif os.getenv("CHAT_COMPLETION_ENABLE", "true").lower() != "true" or not all(
-        os.getenv(n) for n in ("AZURE_OPENAI_APIKEY", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_CHAT_DEPLOYMENT_NAME")
-    ):
+    elif os.getenv("CHAT_COMPLETION_ENABLE", "true").lower() != "true" or not llm.chat_configured():
         note = "Answer generation is not enabled/configured; returning matches only."
     else:
         try:
@@ -944,12 +930,15 @@ async def get_video_clip(
     length = max(end - start, 1.0)
     destination = media_utils.clip_cache_path(video_id, start, length)
     if not os.path.exists(destination):
-        try:
-            async with CLIP_SEMAPHORE:
-                await asyncio.to_thread(media_utils.make_clip_sync, source, destination, start, length)
-        except Exception as e:
-            logging.warning(f"Clip extraction failed for video {video_id}: {e}")
-            raise ApiError(404, "clip_unavailable", f"Clip could not be created: {e}", stage)
+        # One ffmpeg run per clip; concurrent identical requests wait, then hit the cache
+        async with _CLIP_LOCKS.setdefault(destination, asyncio.Lock()):
+            if not os.path.exists(destination):
+                try:
+                    async with CLIP_SEMAPHORE:
+                        await asyncio.to_thread(media_utils.make_clip_sync, source, destination, start, length)
+                except Exception as e:
+                    logging.warning(f"Clip extraction failed for video {video_id}: {e}")
+                    raise ApiError(404, "clip_unavailable", f"Clip could not be created: {e}", stage)
     return FileResponse(destination, media_type="video/mp4")
 
 

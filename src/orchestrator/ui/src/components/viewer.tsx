@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, friendlyError, imageUrl } from '../api';
 import type { FrameDetail, TimelinePoint, UiElement } from '../types';
 import { levelColor, mmss, prettyAction, toLevel } from '../util';
@@ -26,20 +26,26 @@ export function FrameViewer({ videoId, frame, point, elements, showBoxes, hoverI
   const [clip, setClip] = useState<{ state: 'idle' | 'loading' | 'ready' | 'error'; url?: string; msg?: string }>({ state: 'idle' });
   const [imgErr, setImgErr] = useState(false);
   const frameId = point?.frame_id;
+  const clipToken = useRef(0);
 
   useEffect(() => {
     setImgErr(false);
+    clipToken.current++; // invalidate any in-flight clip request for the previous frame
     setClip((c) => { if (c.url) URL.revokeObjectURL(c.url); return { state: 'idle' }; });
   }, [frameId]);
 
+  useEffect(() => () => { clipToken.current++; }, []);
+
   const playClip = async () => {
     if (point == null) return;
+    const token = ++clipToken.current;
     setClip({ state: 'loading' });
     try {
       const url = await api.clip(videoId, point.t);
+      if (token !== clipToken.current) { URL.revokeObjectURL(url); return; }
       setClip({ state: 'ready', url });
     } catch (e) {
-      setClip({ state: 'error', msg: friendlyError(e).title });
+      if (token === clipToken.current) setClip({ state: 'error', msg: friendlyError(e).title });
     }
   };
 

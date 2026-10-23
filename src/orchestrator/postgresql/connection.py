@@ -1,5 +1,6 @@
 import os
 import logging
+import threading
 import psycopg2
 from psycopg2.extras import DictCursor
 from psycopg2 import pool
@@ -13,8 +14,10 @@ logger = logging.getLogger(__name__)
 
 # Connection pool for efficient database access
 connection_pool = None
+# psycopg2's pool raises when exhausted; block callers instead so bursts queue rather than fail
+_pool_slots = threading.BoundedSemaphore(int(os.getenv("PG_POOL_MAX", "10")))
 
-def init_connection_pool(min_connections=1, max_connections=10):
+def init_connection_pool(min_connections=1, max_connections=int(os.getenv("PG_POOL_MAX", "10"))):
     """Initialize PostgreSQL connection pool with Azure best practices"""
     global connection_pool
     
@@ -41,17 +44,22 @@ def get_connection():
     if connection_pool is None:
         init_connection_pool()
     
+    if not _pool_slots.acquire(timeout=30):
+        raise RuntimeError("Timed out waiting for a free database connection")
     try:
-        connection = connection_pool.getconn()
-        return connection
+        return connection_pool.getconn()
     except Exception as e:
+        _pool_slots.release()
         logger.error(f"Failed to get connection from pool: {str(e)}")
         raise
 
 def release_connection(connection):
     """Return a connection to the pool"""
     if connection_pool is not None:
-        connection_pool.putconn(connection)
+        try:
+            connection_pool.putconn(connection)
+        finally:
+            _pool_slots.release()
 
 class DatabaseManager:
     """Context manager for handling database connections safely"""

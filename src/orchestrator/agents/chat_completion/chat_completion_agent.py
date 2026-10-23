@@ -1,19 +1,13 @@
-import os
-import uuid
 import yaml
 import asyncio
 import logging
+import uuid
 from dotenv import load_dotenv
-from typing import Optional, Dict, Any
+from typing import Optional
 from fastapi import HTTPException
-from semantic_kernel.agents import ChatCompletionAgent, ChatHistoryAgentThread
-from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion
-from semantic_kernel.contents.chat_history import ChatHistory
-from semantic_kernel.contents.utils.author_role import AuthorRole
-from semantic_kernel.contents.chat_message_content import ChatMessageContent
-from semantic_kernel.contents.text_content import TextContent
-from semantic_kernel.contents.image_content import ImageContent
-from semantic_kernel.connectors.ai.open_ai.settings.azure_open_ai_settings import AzureOpenAISettings
+from agent_framework import Agent, AgentSession
+
+from agents.llm import make_agent, image_message, response_text
 
 
 # Configure logging
@@ -22,7 +16,6 @@ logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
-
 
 def load_prompts(prompt_path: str="agents/chat_completion/agent.yml") -> str:
     """
@@ -49,90 +42,34 @@ def load_prompts(prompt_path: str="agents/chat_completion/agent.yml") -> str:
         raise
 
 
-async def chat(agent: ChatCompletionAgent,
-               base64_image: str, 
-                omniparser_response: Optional[list|set],
-                thread: Optional[ChatHistoryAgentThread] = None,
-                custom_prompt: Optional[str] = None):
-    """
-    Analyze an image using the Azure AI Agent with rate limit handling
-    
-    Args:
-        base64_image: Base64 encoded image data
-        omniparser_response: Response from omniparser with image analysis
-        thread: Optional thread ID for continuing a conversation
-        custom_prompt: Optional custom prompt to guide the analysis
-        
-    Returns:
-        The analysis result from the agent
-    """
-    if not isinstance(agent, ChatCompletionAgent):
-        raise ValueError("Agent not initialized. Call initialize() first.")
-    
-    # Build the prompt
+async def chat(agent: Agent,
+               base64_image: str,
+               omniparser_response: Optional[list | set],
+               session: Optional[AgentSession] = None,
+               custom_prompt: Optional[str] = None):
+    """Analyze one frame (image + OmniParser output) with the image analyzer agent."""
     prompt = custom_prompt or "Analyze the image for any suspicious activities or security threats."
     full_prompt = f"{prompt}\n\nUse the given image data:\nAnd the omniparser response:\n{omniparser_response}"
 
-    # chat_message_contents = [
-    #     ChatMessageContent(
-    #         role=AuthorRole.SYSTEM,
-    #         items=[
-    #             TextContent(text=load_prompts())
-    #         ]
-    #     ),
-    #     ChatMessageContent(
-    #         role=AuthorRole.USER,
-    #         items=[
-    #             ImageContent(data_format="base64", data=base64_image, mime_type="image/jpeg"),
-    #             TextContent(text=full_prompt),
-    #         ]
-    #     )
-    # ]
-    
-    chat_message_contents = ChatMessageContent(
-            role=AuthorRole.USER,
-            items=[
-                ImageContent(data_format="base64", data=base64_image, mime_type="image/jpeg"),
-                TextContent(text=full_prompt),
-            ]
-        )
-    
     try:
-        # Get response with proper error handling                
-        response = await agent.get_response(messages=chat_message_contents, thread=thread, top_p=0.1, temperature=0.1)
-        return response
+        return await agent.run(image_message(base64_image, full_prompt), session=session)
     except Exception as e:
         logger.error(f"Error analyzing image: {e}", exc_info=True)
         logger.error(f"Exception details: {getattr(e, '__dict__', None)}")
         raise HTTPException(status_code=500, detail=f"{getattr(e, '__dict__', None)}")
 
 
-
-async def get_chat_completion_agent_thread(thread_id: Optional[str] = None):
+async def get_chat_completion_agent_session(session_id: Optional[str] = None):
     """
-    Create the image analyzer agent and a chat thread.
+    Create the image analyzer agent and a chat session.
 
     Args:
-        thread_id: Optional thread ID. Defaults to a unique ID per call so concurrent
-            requests never share a thread identifier.
+        session_id: Optional session ID. Defaults to a unique ID per call so concurrent
+            requests never share a session identifier.
     """
-    thread_id = thread_id or f"image_analyzer_thread_{uuid.uuid4().hex}"
-    agent = ChatCompletionAgent(
-        service=AzureChatCompletion(
-            api_key=os.getenv("AZURE_OPENAI_APIKEY"),
-            endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-            deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"),
-            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview"),
-        ),
-        name="ImageAnalyzerAgent",
-        instructions=await asyncio.to_thread(load_prompts),
-    )
-    
-    thread = ChatHistoryAgentThread(
-        chat_history=ChatHistory(),
-        thread_id=thread_id
-    )
-    return agent, thread
+    session_id = session_id or f"image_analyzer_session_{uuid.uuid4().hex}"
+    agent = make_agent("ImageAnalyzerAgent", await asyncio.to_thread(load_prompts))
+    return agent, agent.create_session(session_id=session_id)
 
 
 QA_AGENT_INSTRUCTIONS = (
@@ -142,21 +79,12 @@ QA_AGENT_INSTRUCTIONS = (
 )
 
 
-async def get_qa_agent() -> ChatCompletionAgent:
+async def get_qa_agent() -> Agent:
     """Create a lightweight Q&A agent (same Azure OpenAI chat deployment as the other agents)."""
-    return ChatCompletionAgent(
-        service=AzureChatCompletion(
-            api_key=os.getenv("AZURE_OPENAI_APIKEY"),
-            endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-            deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"),
-            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview"),
-        ),
-        name="VideoQAAgent",
-        instructions=QA_AGENT_INSTRUCTIONS,
-    )
+    return make_agent("VideoQAAgent", QA_AGENT_INSTRUCTIONS)
 
 
-async def qa_agent_run(agent: ChatCompletionAgent, question: str, frames: list) -> str:
+async def qa_agent_run(agent: Agent, question: str, frames: list) -> str:
     """
     Answer a question from matched frames.
 
@@ -167,70 +95,20 @@ async def qa_agent_run(agent: ChatCompletionAgent, question: str, frames: list) 
         f"[frame {f['id']} @ {f.get('frame_timestamp')}s]\n{f.get('image_description') or ''}" for f in frames
     )
     prompt = f"Question: {question}\n\nFrame descriptions:\n{context}"
-    response = await agent.get_response(messages=prompt, top_p=0.1, temperature=0.1)
-    return str(getattr(response, "content", response))
+    return response_text(await agent.run(prompt))
 
 
-async def chat_completion_agent_run(agent: ChatCompletionAgent, 
-                                   thread: Optional[ChatHistoryAgentThread] = None, 
-                                   user_input: Optional[str] = None, 
-                                   base64_image: str = "IMAGE IS MISSING", 
-                                   omniparser_response: Optional[set] = None):
-    """
-    Run the image analyzer agent with the given parameters and rate limit handling.
-    
-    Args:
-        agent: The Azure AI Agent instance
-        thread: Optional thread ID for continuing a conversation
-        user_input: Optional custom prompt
-        base64_image: Base64 encoded image data
-        omniparser_response: Response from omniparser with image analysis
-        
-    Returns:
-        The agent's response
-    """
-    
-    # Verify agent type with proper error handling
-    if not isinstance(agent, ChatCompletionAgent):
-        raise TypeError(f"agent must be an instance of AzureAIAgent, got {type(agent).__name__}")
-    
-    try:
-        # Use the service to analyze the image
-        return await chat(
-            agent=agent,
-            base64_image=base64_image,
-            omniparser_response=omniparser_response,
-            thread=thread,
-            custom_prompt=user_input
-        )
-    except Exception as e:
-        # For HTTP transport closed errors, provide a more helpful message
-        if "HTTP transport has already been closed" in str(e):
-            logger.error("The HTTP transport was closed. This typically happens when using an agent outside its context manager.")
-            logger.error("Recommendation: Ensure all agent operations happen within the same async context.")
-        
-        # Re-raise for proper error propagation
-        raise
-
-
-if __name__ == "__main__":
-    async def main():
-        try:
-            agent, thread = await get_chat_completion_agent_thread()
-            logger.info(f"Agent initialized with ID: {agent.id} with thread ID: {thread}")
-            
-            # Test the agent
-            result = await chat_completion_agent_run(
-                agent=agent,
-                user_input="This is a test. Analyze this image for testing purposes.",
-                base64_image="TEST_IMAGE_DATA",
-                omniparser_response=set("OMNIPARSER:Status_Unknown")
-            )
-            
-            logger.info(f"Test result: {result}")
-        except Exception as e:
-            logger.error(f"An error occurred in the main function: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-    
-    asyncio.run(main())
+async def chat_completion_agent_run(agent: Agent,
+                                    session: Optional[AgentSession] = None,
+                                    user_input: Optional[str] = None,
+                                    base64_image: str = "IMAGE IS MISSING",
+                                    omniparser_response: Optional[set] = None):
+    """Run the image analyzer agent for one frame and return the response text."""
+    response = await chat(
+        agent=agent,
+        base64_image=base64_image,
+        omniparser_response=omniparser_response,
+        session=session,
+        custom_prompt=user_input,
+    )
+    return response_text(response)

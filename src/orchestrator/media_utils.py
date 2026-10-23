@@ -2,6 +2,7 @@
 import os
 import shutil
 import subprocess
+import uuid
 
 CACHE_DIR = os.getenv("CLIP_CACHE_DIR", os.path.join(os.getcwd(), "temp", "clip_cache"))
 FFMPEG_TIMEOUT_SECONDS = float(os.getenv("CLIP_FFMPEG_TIMEOUT_SECONDS", "120"))
@@ -24,7 +25,7 @@ def download_blob_to_file_sync(connection_string: str, container_name: str, blob
     from azure.storage.blob import BlobServiceClient
 
     os.makedirs(os.path.dirname(destination), exist_ok=True)
-    partial = f"{destination}.{os.getpid()}.part"
+    partial = f"{destination}.{uuid.uuid4().hex}.part"
     try:
         blob_client = BlobServiceClient.from_connection_string(connection_string) \
             .get_container_client(container_name).get_blob_client(blob_name)
@@ -42,7 +43,7 @@ def make_clip_sync(source: str, destination: str, start: float, duration: float)
     if not ffmpeg:
         raise RuntimeError("ffmpeg is not installed")
     os.makedirs(os.path.dirname(destination), exist_ok=True)
-    partial = f"{destination}.{os.getpid()}.part.mp4"
+    partial = f"{destination}.{uuid.uuid4().hex}.part.mp4"
     cmd = [
         ffmpeg, "-y", "-loglevel", "error",
         "-ss", f"{start:.3f}", "-i", source, "-t", f"{duration:.3f}",

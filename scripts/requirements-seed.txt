@@ -2,4 +2,5 @@ pillow>=10.1
 psycopg2-binary
 python-dotenv
 # Optional: real Azure embeddings (otherwise deterministic pseudo-embeddings are stored)
-semantic-kernel
+agent-framework-core==1.22.0
+agent-framework-openai==1.17.0
