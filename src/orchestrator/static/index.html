@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Video Surveillance Auditor</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --text:#1f2933; --muted:#6b7785; --line:#e1e5ea; --accent:#2457d6; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); }
+  header { background:#16202e; color:#fff; padding:14px 24px; font-size:24px; font-weight:600; }
+  main { max-width:1100px; margin:20px auto; padding:0 16px; display:grid; gap:16px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:16px; }
+  h2 { margin:0 0 12px; font-size:19px; }
+  h3 { margin:16px 0 8px; font-size:16px; }
+  button { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:7px 14px; cursor:pointer; font:inherit; }
+  button.secondary { background:#e8ecf2; color:var(--text); }
+  button:disabled { opacity:.5; cursor:default; }
+  input[type=text], input[type=file] { font:inherit; padding:6px; border:1px solid var(--line); border-radius:6px; }
+  input[type=text] { width:min(520px,100%); }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; }
+  tr.clickable { cursor:pointer; }
+  tr.clickable:hover { background:#f0f4fb; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .muted { color:var(--muted); }
+  .badge { display:inline-block; padding:1px 9px; border-radius:10px; font-size:12px; font-weight:600; color:#fff; background:#8a94a0; }
+  .badge.low { background:#2e9d5b; } .badge.medium { background:#d9a400; }
+  .badge.high { background:#e8741a; } .badge.critical { background:#cf2a2a; }
+  .progress { height:10px; background:#e8ecf2; border-radius:5px; overflow:hidden; margin:8px 0; }
+  .progress > div { height:100%; width:100%; background:var(--accent); transform:scaleX(0); transform-origin:left; transition:transform .3s; }
+  .error { background:#fdecec; border:1px solid #f3b4b4; color:#8a1f1f; border-radius:6px; padding:8px 12px; margin:8px 0; }
+  .warn { background:#fff6e0; border:1px solid #f0d28a; color:#7a5a00; border-radius:6px; padding:8px 12px; margin:8px 0; }
+  .ok { background:#e8f6ee; border:1px solid #a9dcbf; color:#1d6b3f; border-radius:6px; padding:8px 12px; margin:8px 0; }
+  .summary { white-space:pre-wrap; background:#f8f9fb; border:1px solid var(--line); border-radius:6px; padding:10px; max-height:260px; overflow:auto; }
+  img.thumb { width:96px; height:60px; object-fit:cover; border-radius:4px; background:#e8ecf2; display:block; }
+  .pager { display:flex; gap:8px; align-items:center; margin-top:10px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<header>Video Surveillance Auditor</header>
+<main>
+  <div id="errors"></div>
+
+  <section>
+    <h2>1. Upload a video</h2>
+    <div class="row">
+      <input type="file" id="file" accept="video/*">
+      <button id="uploadBtn">Upload &amp; analyze</button>
+    </div>
+    <div id="job" hidden>
+      <h3>Job <span id="jobId" class="muted"></span></h3>
+      <div>Status: <b id="jobStatus"></b> &middot; Stage: <span id="jobStage"></span></div>
+      <div class="progress"><div id="jobBar"></div></div>
+      <div id="jobFrames" class="muted"></div>
+      <div id="jobMsgs"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Videos</h2>
+    <table>
+      <thead><tr><th>ID</th><th>Filename</th><th>Security level</th><th>Created</th></tr></thead>
+      <tbody id="videoRows"></tbody>
+    </table>
+    <div class="pager">
+      <button class="secondary" id="vPrev">Prev</button>
+      <button class="secondary" id="vNext">Next</button>
+      <span id="vInfo" class="muted"></span>
+      <button class="secondary" id="vRefresh">Refresh</button>
+    </div>
+  </section>
+
+  <section id="detail" hidden>
+    <h2>3. Video <span id="dTitle"></span></h2>
+    <div>Security level: <span id="dLevel"></span> &middot; Frames: <span id="dFrames"></span> &middot; Created: <span id="dCreated"></span></div>
+    <h3>Summary</h3>
+    <div id="dSummary" class="summary"></div>
+
+    <h3>Ask about this video</h3>
+    <div class="row">
+      <input type="text" id="question" placeholder="e.g. Was anyone entering a restricted area?">
+      <button id="askBtn">Ask</button>
+    </div>
+    <div id="askOut"></div>
+
+    <h3>Frames</h3>
+    <table>
+      <thead><tr><th>Thumbnail</th><th>Time (s)</th><th>Description</th></tr></thead>
+      <tbody id="frameRows"></tbody>
+    </table>
+    <div class="pager">
+      <button class="secondary" id="fPrev">Prev</button>
+      <button class="secondary" id="fNext">Next</button>
+      <span id="fInfo" class="muted"></span>
+    </div>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var VIDEO_LIMIT = 10, FRAME_LIMIT = 10;
+  var state = { vOffset: 0, vTotal: 0, videoId: null, fOffset: 0, fTotal: 0, pollTimer: null };
+
+  function $(id) { return document.getElementById(id); }
+
+  function el(tag, opts, children) {
+    var node = document.createElement(tag);
+    opts = opts || {};
+    if (opts.text !== undefined && opts.text !== null) node.textContent = String(opts.text);
+    if (opts.cls) node.className = opts.cls;
+    (children || []).forEach(function (c) { node.appendChild(c); });
+    return node;
+  }
+
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+  function fmtDate(v) {
+    if (!v) return "";
+    var d = new Date(v);
+    return isNaN(d.getTime()) ? String(v) : d.toLocaleString();
+  }
+
+  function badge(level) {
+    var l = level ? String(level).toLowerCase() : "";
+    var known = ["low", "medium", "high", "critical"].indexOf(l) >= 0;
+    return el("span", { cls: "badge" + (known ? " " + l : ""), text: level || "unknown" });
+  }
+
+  // Only http(s) URLs are used for links/images
+  function safeUrl(u) { return typeof u === "string" && /^https?:\/\//i.test(u) ? u : null; }
+
+  function showError(err) {
+    var box = el("div", { cls: "error" });
+    var title = err.error ? String(err.error).replace(/_/g, " ") : "error";
+    box.appendChild(el("b", { text: "Something went wrong: " + title }));
+    if (err.stage) box.appendChild(el("div", { text: "Stage: " + err.stage }));
+    if (err.detail) box.appendChild(el("div", { text: err.detail }));
+    if (err.job_id) box.appendChild(el("div", { cls: "muted", text: "Job: " + err.job_id }));
+    var close = el("button", { cls: "secondary", text: "Dismiss" });
+    close.style.marginTop = "6px";
+    close.addEventListener("click", function () { box.remove(); });
+    box.appendChild(close);
+    var host = $("errors");
+    clear(host);
+    host.appendChild(box);
+    box.scrollIntoView({ block: "nearest" });
+  }
+
+  function errorMessageDiv(err) {
+    var parts = [err.error, err.stage && ("stage: " + err.stage), err.detail].filter(Boolean);
+    return el("div", { cls: "error", text: parts.join(" \u2014 ") });
+  }
+
+  // fetch wrapper: resolves JSON, rejects with a {error, stage, detail} object
+  function api(path, options) {
+    return fetch(path, options).then(function (resp) {
+      return resp.text().then(function (text) {
+        var body = null;
+        try { body = text ? JSON.parse(text) : null; } catch (e) { body = null; }
+        if (resp.ok) return body;
+        if (body && body.error) throw body;
+        if (body && typeof body.detail === "string") {
+          throw { error: "http_" + resp.status, detail: body.detail };
+        }
+        throw { error: "http_" + resp.status, detail: resp.statusText || "Request failed" };
+      });
+    }, function () {
+      throw { error: "network_error", detail: "Could not reach the server." };
+    });
+  }
+
+  // ---- Upload & job progress ----
+  function startUpload() {
+    var f = $("file").files[0];
+    if (!f) { showError({ error: "no_file", stage: "validating_request", detail: "Choose a video file first." }); return; }
+    var fd = new FormData();
+    fd.append("file", f);
+    $("uploadBtn").disabled = true;
+    clear($("errors"));
+    api("/v2/ingest-video/", { method: "POST", body: fd }).then(function (res) {
+      $("job").hidden = false;
+      $("jobId").textContent = res.job_id;
+      pollJob(res.status_url || ("/jobs/" + res.job_id));
+    }).catch(function (e) {
+      $("uploadBtn").disabled = false;
+      showError(e);
+    });
+  }
+
+  function pollJob(url) {
+    if (state.pollTimer) clearTimeout(state.pollTimer);
+    api(url).then(function (j) {
+      renderJob(j);
+      if (j.status === "done" || j.status === "failed") {
+        $("uploadBtn").disabled = false;
+        loadVideos();
+        if (j.status === "done" && j.video_id) openVideo(j.video_id);
+        return;
+      }
+      state.pollTimer = setTimeout(function () { pollJob(url); }, 2000);
+    }).catch(function (e) {
+      showError(e);
+      state.pollTimer = setTimeout(function () { pollJob(url); }, 5000);
+    });
+  }
+
+  function renderJob(j) {
+    $("jobStatus").textContent = j.status;
+    $("jobStage").textContent = j.stage || "-";
+    var total = j.frames_total || 0, done = j.frames_done || 0;
+    var pct = j.status === "done" ? 100 : (total ? Math.min(100, Math.round(done / total * 100)) : 0);
+    $("jobBar").style.transform = "scaleX(" + (pct / 100) + ")";
+    var txt = "Frames: " + done + " / " + total;
+    if (j.frames_failed) txt += " (" + j.frames_failed + " failed)";
+    $("jobFrames").textContent = txt;
+    var msgs = $("jobMsgs");
+    clear(msgs);
+    (j.warnings || []).forEach(function (w) { msgs.appendChild(el("div", { cls: "warn", text: w })); });
+    if (j.error) msgs.appendChild(el("div", { cls: "error", text: j.error }));
+    if (j.status === "done") msgs.appendChild(el("div", { cls: "ok", text: "Analysis complete" + (j.video_id ? " (video " + j.video_id + ")" : "") }));
+  }
+
+  // ---- Videos list ----
+  function loadVideos() {
+    api("/videos?limit=" + VIDEO_LIMIT + "&offset=" + state.vOffset).then(function (res) {
+      state.vTotal = res.total;
+      var body = $("videoRows");
+      clear(body);
+      if (!res.items.length) {
+        var td = el("td", { cls: "muted", text: "No videos yet." });
+        td.colSpan = 4;
+        body.appendChild(el("tr", {}, [td]));
+      }
+      res.items.forEach(function (v) {
+        var tr = el("tr", { cls: "clickable" }, [
+          el("td", { text: v.id }),
+          el("td", { text: v.filename || "" }),
+          el("td", {}, [badge(v.security_level)]),
+          el("td", { text: fmtDate(v.created_at) })
+        ]);
+        tr.addEventListener("click", function () { openVideo(v.id); });
+        body.appendChild(tr);
+      });
+      var from = res.total ? state.vOffset + 1 : 0;
+      $("vInfo").textContent = from + "\u2013" + (state.vOffset + res.items.length) + " of " + res.total;
+      $("vPrev").disabled = state.vOffset <= 0;
+      $("vNext").disabled = state.vOffset + VIDEO_LIMIT >= res.total;
+    }).catch(showError);
+  }
+
+  // ---- Video detail ----
+  function openVideo(id) {
+    state.videoId = id;
+    state.fOffset = 0;
+    clear($("askOut"));
+    api("/videos/" + encodeURIComponent(id)).then(function (v) {
+      $("detail").hidden = false;
+      $("dTitle").textContent = "#" + v.id + (v.filename ? " \u2014 " + v.filename : "");
+      var lvl = $("dLevel");
+      clear(lvl);
+      lvl.appendChild(badge(v.security_level));
+      $("dFrames").textContent = v.frames_described + " described / " + v.frame_count;
+      $("dCreated").textContent = fmtDate(v.created_at);
+      $("dSummary").textContent = v.summary || "(no summary yet)";
+      loadFrames();
+      $("detail").scrollIntoView({ behavior: "smooth", block: "start" });
+    }).catch(showError);
+  }
+
+  function thumbCell(url) {
+    var u = safeUrl(url);
+    var td = el("td");
+    if (!u) { td.appendChild(el("span", { cls: "muted", text: "n/a" })); return td; }
+    var a = el("a", { text: "open" });
+    a.href = u; a.target = "_blank"; a.rel = "noopener noreferrer";
+    var img = el("img", { cls: "thumb" });
+    img.loading = "lazy"; img.alt = "frame";
+    img.addEventListener("error", function () { img.remove(); });
+    img.src = u;
+    td.appendChild(img);
+    td.appendChild(a);
+    return td;
+  }
+
+  function loadFrames() {
+    var id = state.videoId;
+    api("/videos/" + encodeURIComponent(id) + "/frames?limit=" + FRAME_LIMIT + "&offset=" + state.fOffset).then(function (res) {
+      state.fTotal = res.total;
+      var body = $("frameRows");
+      clear(body);
+      if (!res.items.length) {
+        var td = el("td", { cls: "muted", text: "No frames." });
+        td.colSpan = 3;
+        body.appendChild(el("tr", {}, [td]));
+      }
+      res.items.forEach(function (f) {
+        body.appendChild(el("tr", {}, [
+          thumbCell(f.url),
+          el("td", { text: f.frame_timestamp === null || f.frame_timestamp === undefined ? "" : f.frame_timestamp }),
+          el("td", { text: f.image_description || "(not described)" })
+        ]));
+      });
+      var from = res.total ? state.fOffset + 1 : 0;
+      $("fInfo").textContent = from + "\u2013" + (state.fOffset + res.items.length) + " of " + res.total;
+      $("fPrev").disabled = state.fOffset <= 0;
+      $("fNext").disabled = state.fOffset + FRAME_LIMIT >= res.total;
+    }).catch(showError);
+  }
+
+  // ---- Ask ----
+  function ask() {
+    var q = $("question").value.trim();
+    if (!q) return;
+    var out = $("askOut");
+    clear(out);
+    out.appendChild(el("div", { cls: "muted", text: "Thinking..." }));
+    $("askBtn").disabled = true;
+    api("/videos/" + encodeURIComponent(state.videoId) + "/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: q, top_k: 5 })
+    }).then(function (res) {
+      clear(out);
+      if (res.answer) out.appendChild(el("div", { cls: "summary", text: res.answer }));
+      if (res.note) out.appendChild(el("div", { cls: "warn", text: res.note }));
+      if (!res.matches.length) {
+        out.appendChild(el("div", { cls: "muted", text: "No matching frames." }));
+        return;
+      }
+      var tbody = el("tbody");
+      res.matches.forEach(function (m) {
+        tbody.appendChild(el("tr", {}, [
+          thumbCell(m.url),
+          el("td", { text: m.frame_id }),
+          el("td", { text: m.frame_timestamp === null || m.frame_timestamp === undefined ? "" : m.frame_timestamp }),
+          el("td", { text: (typeof m.similarity === "number" ? m.similarity.toFixed(3) : "") }),
+          el("td", { text: m.image_description || "" })
+        ]));
+      });
+      var thead = el("thead", {}, [el("tr", {}, [
+        el("th", { text: "Frame" }), el("th", { text: "ID" }), el("th", { text: "Time (s)" }),
+        el("th", { text: "Similarity" }), el("th", { text: "Description" })
+      ])]);
+      out.appendChild(el("h3", { text: "Matching frames" }));
+      out.appendChild(el("table", {}, [thead, tbody]));
+    }).catch(function (e) {
+      clear(out);
+      out.appendChild(errorMessageDiv(e));
+    }).then(function () { $("askBtn").disabled = false; });
+  }
+
+  $("uploadBtn").addEventListener("click", startUpload);
+  $("askBtn").addEventListener("click", ask);
+  $("question").addEventListener("keydown", function (e) { if (e.key === "Enter") ask(); });
+  $("vPrev").addEventListener("click", function () { state.vOffset = Math.max(0, state.vOffset - VIDEO_LIMIT); loadVideos(); });
+  $("vNext").addEventListener("click", function () { state.vOffset += VIDEO_LIMIT; loadVideos(); });
+  $("vRefresh").addEventListener("click", loadVideos);
+  $("fPrev").addEventListener("click", function () { state.fOffset = Math.max(0, state.fOffset - FRAME_LIMIT); loadFrames(); });
+  $("fNext").addEventListener("click", function () { state.fOffset += FRAME_LIMIT; loadFrames(); });
+
+  loadVideos();
+})();
+</script>
+</body>
+</html>

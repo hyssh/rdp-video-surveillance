@@ -1,10 +1,16 @@
+import json
 import logging
 import os
 from urllib.parse import urlparse
-from typing import Dict, Any, List, Optional
-from psycopg2.extras import execute_batch
+from typing import Dict, Any, List, Optional, Tuple
+from psycopg2.extras import execute_batch, execute_values
 
 logger = logging.getLogger(__name__)
+
+_NO_ANALYSIS = {
+    "image_description": None, "risk_score": None, "risk_level": None, "action_type": None,
+    "ui_elements": None, "frame_width": None, "frame_height": None,
+}
 
 def insert_frames(video_id: int, frames_data: List[Any]) -> Dict[str, Any]:
     """
@@ -26,9 +32,11 @@ def insert_frames(video_id: int, frames_data: List[Any]) -> Dict[str, Any]:
     
     insert_sql = """
         INSERT INTO frames 
-            (video_id, blob_name, container_name, url, frame_timestamp)
+            (video_id, blob_name, container_name, url, frame_timestamp, image_description,
+             risk_score, risk_level, action_type, ui_elements, frame_width, frame_height)
         VALUES 
-            (%(video_id)s, %(blob_name)s, %(container_name)s, %(url)s, %(frame_timestamp)s)
+            (%(video_id)s, %(blob_name)s, %(container_name)s, %(url)s, %(frame_timestamp)s, %(image_description)s,
+             %(risk_score)s, %(risk_level)s, %(action_type)s, %(ui_elements)s::jsonb, %(frame_width)s, %(frame_height)s)
     """
     
     try:
@@ -63,7 +71,8 @@ def insert_frames(video_id: int, frames_data: List[Any]) -> Dict[str, Any]:
                         "blob_name": blob_name,
                         "container_name": container_name,
                         "url": url,
-                        "frame_timestamp": frame_timestamp
+                        "frame_timestamp": frame_timestamp,
+                        **_NO_ANALYSIS
                     })
                 else:
                     logger.warning(f"Could not parse container and blob name from URL: {url}")
@@ -86,12 +95,17 @@ def insert_frames(video_id: int, frames_data: List[Any]) -> Dict[str, Any]:
                 except (ValueError, IndexError):
                     pass
                 
+                # Optional analysis fields and an explicit timestamp (used by the demo seed script)
+                if frame.get("frame_timestamp") is not None:
+                    frame_timestamp = frame["frame_timestamp"]
                 frame_records.append({
                     "video_id": video_id,
                     "blob_name": blob_name,
                     "container_name": frame.get("container_name"),
                     "url": frame.get("url") or frame.get("blob_url"),
-                    "frame_timestamp": frame_timestamp
+                    "frame_timestamp": frame_timestamp,
+                    **{key: frame.get(key) for key in _NO_ANALYSIS},
+                    "ui_elements": json.dumps(frame["ui_elements"]) if frame.get("ui_elements") is not None else None,
                 })
             else:
                 logger.warning(f"Skipping frame with unsupported type: {type(frame)}")
@@ -128,7 +142,8 @@ def get_frames_by_video_id(video_id: int) -> List[Dict[str, Any]]:
     from .connection import DatabaseManager
     
     select_sql = """
-        SELECT id, video_id, blob_name, container_name, url, frame_timestamp, created_at, image_description
+        SELECT id, video_id, blob_name, container_name, url, frame_timestamp, created_at, image_description,
+               risk_score, risk_level, action_type
         FROM frames
         WHERE video_id = %s
         ORDER BY frame_timestamp
@@ -173,14 +188,111 @@ def update_frame_with_embedding(frame_id: int, description: str, embedding_vecto
         logger.error(f"Failed to update frame with embedding: {str(e)}")
         return False
 
-def search_similar_frames(query_vector: list, threshold: float = 0.75, max_results: int = 10) -> List[Dict[str, Any]]:
+def update_frames_with_embeddings(updates: List[Tuple[int, str, list]], page_size: int = 100) -> int:
+    """
+    Bulk update frames with image description and embedding in a single transaction.
+
+    Args:
+        updates: List of (frame_id, description, embedding_vector) tuples
+        page_size: Rows per statement sent to the database
+
+    Returns:
+        int: Number of frames updated (0 on failure or empty input)
+    """
+    from .connection import DatabaseManager
+
+    if not updates:
+        return 0
+
+    update_sql = """
+        UPDATE frames AS f
+        SET image_description = v.description, embedding = v.embedding::vector
+        FROM (VALUES %s) AS v(id, description, embedding)
+        WHERE f.id = v.id
+        RETURNING f.id
+    """
+
+    try:
+        rows = [(fid, desc, [float(x) for x in vec]) for fid, desc, vec in updates]
+        with DatabaseManager() as cursor:
+            updated = execute_values(
+                cursor, update_sql, rows,
+                template="(%s::int, %s::text, %s::float8[])",
+                page_size=page_size, fetch=True,
+            )
+            logger.info(f"Bulk updated {len(updated)} frames with embedding vectors")
+            return len(updated)
+    except Exception as e:
+        logger.error(f"Failed to bulk update frames with embeddings: {str(e)}")
+        return 0
+
+def update_frames_analysis(rows: List[Dict[str, Any]], page_size: int = 100) -> int:
+    """
+    Bulk store per-frame analysis fields (risk_score, risk_level, action_type, ui_elements,
+    frame_width, frame_height) in a single transaction. Missing keys are stored as NULL.
+    Raises on database errors.
+    """
+    from .connection import DatabaseManager
+
+    if not rows:
+        return 0
+    values = [
+        (
+            r["id"], r.get("risk_score"), r.get("risk_level"), r.get("action_type"),
+            json.dumps(r["ui_elements"]) if r.get("ui_elements") is not None else None,
+            r.get("frame_width"), r.get("frame_height"),
+        )
+        for r in rows
+    ]
+    update_sql = """
+        UPDATE frames AS f
+        SET risk_score = v.risk_score, risk_level = v.risk_level, action_type = v.action_type,
+            ui_elements = v.ui_elements, frame_width = v.frame_width, frame_height = v.frame_height
+        FROM (VALUES %s) AS v(id, risk_score, risk_level, action_type, ui_elements, frame_width, frame_height)
+        WHERE f.id = v.id
+        RETURNING f.id
+    """
+    with DatabaseManager() as cursor:
+        updated = execute_values(
+            cursor, update_sql, values,
+            template="(%s::int, %s::int, %s::text, %s::text, %s::jsonb, %s::int, %s::int)",
+            page_size=page_size, fetch=True,
+        )
+        return len(updated)
+
+def list_frames(video_id: int, limit: int = 50, offset: int = 0):
+    """
+    Return (rows, total) for a page of a video's frames ordered by timestamp. Raises on database errors.
+    """
+    from .connection import DatabaseManager
+
+    with DatabaseManager() as cursor:
+        cursor.execute("SELECT COUNT(*) FROM frames WHERE video_id = %s", (video_id,))
+        total = cursor.fetchone()[0]
+        cursor.execute(
+            """
+            SELECT id, frame_timestamp, image_description, url, risk_score, risk_level, action_type
+            FROM frames
+            WHERE video_id = %s
+            ORDER BY frame_timestamp, id
+            LIMIT %s OFFSET %s
+            """,
+            (video_id, limit, offset),
+        )
+        return [dict(row) for row in cursor.fetchall()], total
+
+def search_similar_frames(query_vector: list, threshold: Optional[float] = 0.75, max_results: int = 10,
+                          video_id: Optional[int] = None, raise_on_error: bool = False) -> List[Dict[str, Any]]:
     """
     Search for frames similar to the provided vector
     
     Args:
         query_vector: Vector to search for (1536 dimensions)
-        threshold: Similarity threshold (0-1, higher means more similar)
+        threshold: Similarity threshold (0-1, higher means more similar). Only applied when
+            video_id is given (the legacy SQL function ignores it); None disables it.
         max_results: Maximum number of results to return
+        video_id: Optionally restrict the search to a single video
+        raise_on_error: Raise database errors instead of returning []
         
     Returns:
         List[Dict]: List of similar frames with similarity scores
@@ -189,13 +301,34 @@ def search_similar_frames(query_vector: list, threshold: float = 0.75, max_resul
     
     try:
         with DatabaseManager() as cursor:
-            cursor.execute(
-                "SELECT * FROM search_similar_frames(%s, %s, %s)",
-                (query_vector, threshold, max_results)
-            )
+            if video_id is None:
+                cursor.execute(
+                    "SELECT * FROM search_similar_frames(%s, %s, %s)",
+                    (query_vector, 0.75 if threshold is None else threshold, max_results)
+                )
+            else:
+                # pgvector text literal; similarity is cosine for unit-length embeddings (L2 ops keep the IVFFlat index usable)
+                vector_literal = "[" + ",".join(repr(float(x)) for x in query_vector) + "]"
+                cursor.execute(
+                    """
+                    SELECT * FROM (
+                        SELECT id, video_id, blob_name, url, frame_timestamp, image_description,
+                               1 - ((embedding <-> %(q)s::vector) ^ 2) / 2 AS similarity
+                        FROM frames
+                        WHERE video_id = %(video_id)s AND embedding IS NOT NULL
+                        ORDER BY embedding <-> %(q)s::vector
+                        LIMIT %(limit)s
+                    ) ranked
+                    WHERE %(threshold)s::float IS NULL OR similarity >= %(threshold)s::float
+                    ORDER BY similarity DESC
+                    """,
+                    {"q": vector_literal, "video_id": video_id, "limit": max_results, "threshold": threshold},
+                )
             return [dict(row) for row in cursor.fetchall()]
     except Exception as e:
         logger.error(f"Failed to search similar frames: {str(e)}")
+        if raise_on_error:
+            raise
         return []
 
 def get_frames_without_embeddings(limit: int = 100) -> List[Dict[str, Any]]:
@@ -225,3 +358,37 @@ def get_frames_without_embeddings(limit: int = 100) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Failed to get frames without embeddings: {str(e)}")
         return []
+
+def get_frame(frame_id: int) -> Optional[Dict[str, Any]]:
+    """Return one frame with analysis fields (incl. ui_elements), or None. Raises on database errors."""
+    from .connection import DatabaseManager
+
+    with DatabaseManager() as cursor:
+        cursor.execute(
+            """
+            SELECT id, video_id, blob_name, container_name, url, frame_timestamp, image_description,
+                   risk_score, risk_level, action_type, ui_elements, frame_width, frame_height
+            FROM frames
+            WHERE id = %s
+            """,
+            (frame_id,),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def list_timeline_frames(video_id: int) -> List[Dict[str, Any]]:
+    """All frames of a video (no pagination) with risk fields, ordered by time. Raises on database errors."""
+    from .connection import DatabaseManager
+
+    with DatabaseManager() as cursor:
+        cursor.execute(
+            """
+            SELECT id, frame_timestamp, image_description, risk_score, risk_level, action_type
+            FROM frames
+            WHERE video_id = %s
+            ORDER BY frame_timestamp, id
+            """,
+            (video_id,),
+        )
+        return [dict(row) for row in cursor.fetchall()]

@@ -43,13 +43,46 @@ def initialize_schemas():
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS jobs (
+            id UUID PRIMARY KEY,
+            video_id INTEGER REFERENCES videos(id) ON DELETE SET NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'queued',
+            stage VARCHAR(50),
+            frames_total INTEGER NOT NULL DEFAULT 0,
+            frames_done INTEGER NOT NULL DEFAULT 0,
+            frames_failed INTEGER NOT NULL DEFAULT 0,
+            error TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT jobs_status_check CHECK (status IN ('queued','extracting','analyzing','summarizing','done','failed'))
+        )
+        """,
+        """
+        ALTER TABLE videos
+            ADD COLUMN IF NOT EXISTS duration_s INTEGER,
+            ADD COLUMN IF NOT EXISTS risk_score INTEGER
+        """,
+        """
+        ALTER TABLE frames
+            ADD COLUMN IF NOT EXISTS risk_score INTEGER,
+            ADD COLUMN IF NOT EXISTS risk_level VARCHAR(20),
+            ADD COLUMN IF NOT EXISTS action_type VARCHAR(50),
+            ADD COLUMN IF NOT EXISTS ui_elements JSONB,
+            ADD COLUMN IF NOT EXISTS frame_width INTEGER,
+            ADD COLUMN IF NOT EXISTS frame_height INTEGER
+        """,
+        """
         CREATE INDEX IF NOT EXISTS idx_frames_video_id ON frames(video_id)
         """,
         """
         CREATE INDEX IF NOT EXISTS idx_frames_blob_name ON frames(blob_name)
         """,
         """
-        -- Create a GIN index for vector similarity search
+        CREATE INDEX IF NOT EXISTS idx_frames_video_id_timestamp ON frames(video_id, frame_timestamp)
+        """,
+        """
+        -- IVFFlat (not GIN) index for approximate vector similarity search.
+        -- The name idx_frames_embedding is kept so existing databases are not given a duplicate index.
         CREATE INDEX IF NOT EXISTS idx_frames_embedding ON frames USING ivfflat (embedding vector_l2_ops)
         WITH (lists = 100)
         """
