@@ -1,0 +1,17 @@
+# macOS (Apple Silicon/Intel) CPU requirements for running OmniParser natively (no Docker, no CUDA).
+# paddlepaddle/paddleocr are optional (only used when use_paddleocr=True) and are omitted here.
+torch
+torchvision
+easyocr==1.7.2
+supervision==0.18.0
+transformers==4.51.3
+ultralytics==8.3.70
+numpy==1.26.4
+opencv-python-headless==4.11.0.86
+dill==0.4.0
+accelerate==1.7.0
+timm==1.0.15
+einops==0.8.0
+python-dotenv==1.1.0
+uvicorn==0.34.3
+fastapi==0.115.12

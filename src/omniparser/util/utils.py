@@ -15,17 +15,25 @@ import numpy as np
 # %matplotlib inline
 from matplotlib import pyplot as plt
 import easyocr
-from paddleocr import PaddleOCR
-reader = easyocr.Reader(['en'])
-paddle_ocr = PaddleOCR(
-    lang='en',  # other lang also available
-    use_angle_cls=False,
-    use_gpu=False,  # using cuda will conflict with pytorch in the same process
-    show_log=False,
-    max_batch_size=1024,
-    use_dilation=True,  # improves accuracy
-    det_db_score_mode='slow',  # improves accuracy
-    rec_batch_num=1024)
+reader = easyocr.Reader(['en'], gpu=torch.cuda.is_available())
+_paddle_ocr = None
+
+
+def get_paddle_ocr():
+    """Lazy-load PaddleOCR; it is only needed when use_paddleocr=True (default path uses EasyOCR)."""
+    global _paddle_ocr
+    if _paddle_ocr is None:
+        from paddleocr import PaddleOCR
+        _paddle_ocr = PaddleOCR(
+            lang='en',
+            use_angle_cls=False,
+            use_gpu=False,  # using cuda will conflict with pytorch in the same process
+            show_log=False,
+            max_batch_size=1024,
+            use_dilation=True,
+            det_db_score_mode='slow',
+            rec_batch_num=1024)
+    return _paddle_ocr
 import time
 import base64
 
@@ -41,14 +49,24 @@ import torchvision.transforms as T
 from util.box_annotator import BoxAnnotator 
 
 
+def resolve_device(requested=None):
+    """Pick cuda, mps (Apple GPU, opt-in) or cpu. 'auto'/None prefers cuda, else cpu; unavailable choices fall back to cpu."""
+    requested = (requested or "auto").lower()
+    if requested in ("auto", "cuda") and torch.cuda.is_available():
+        return "cuda"
+    if requested == "mps" and getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
 def get_caption_model_processor(model_name, model_name_or_path="Salesforce/blip2-opt-2.7b", device=None):
     if not device:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"Using device: {device} {torch.cuda.get_device_name(0)}")
+        device = resolve_device()
+    print(f"Using device: {device}")
     if model_name == "blip2":
         from transformers import Blip2Processor, Blip2ForConditionalGeneration
         processor = Blip2Processor.from_pretrained("Salesforce/blip2-opt-2.7b")
-        if device == 'cpu':
+        if device != 'cuda':
             model = Blip2ForConditionalGeneration.from_pretrained(
             model_name_or_path, device_map=None, torch_dtype=torch.float32
         ) 
@@ -59,7 +77,7 @@ def get_caption_model_processor(model_name, model_name_or_path="Salesforce/blip2
     elif model_name == "florence2":
         from transformers import AutoProcessor, AutoModelForCausalLM 
         processor = AutoProcessor.from_pretrained("microsoft/Florence-2-base", trust_remote_code=True)
-        if device == 'cpu':
+        if device != 'cuda':
             model = AutoModelForCausalLM.from_pretrained(model_name_or_path, torch_dtype=torch.float32, trust_remote_code=True)
         else:
             model = AutoModelForCausalLM.from_pretrained(model_name_or_path, torch_dtype=torch.float16, trust_remote_code=True).to(device)
@@ -514,7 +532,7 @@ def check_ocr_box(image_source: Union[str, Image.Image], display_img = True, out
             text_threshold = 0.5
         else:
             text_threshold = easyocr_args['text_threshold']
-        result = paddle_ocr.ocr(image_np, cls=False)[0]
+        result = get_paddle_ocr().ocr(image_np, cls=False)[0]
         coord = [item[0] for item in result if item[1][1] > text_threshold]
         text = [item[1][0] for item in result if item[1][1] > text_threshold]
     else:  # EasyOCR

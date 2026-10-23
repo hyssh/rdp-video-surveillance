@@ -23,7 +23,7 @@ config = {
     'som_model_path': os.getenv('SOM_MODEL_PATH', 'weights/icon_detect/model.pt'),
     'caption_model_name': os.getenv('CAPTION_MODEL_NAME', 'florence2'),
     'caption_model_path': os.getenv('CAPTION_MODEL_PATH', 'weights/icon_caption_florence'),
-    'device': os.getenv('DEVICE', 'cuda'),
+    'device': os.getenv('DEVICE', 'auto'),
     'BOX_TRESHOLD': float(os.getenv('BOX_THRESHOLD', '0.05')),
     'host': os.getenv('OMNIPARSER_HOST', 'localhost'),
     'port': int(os.getenv('OMNIPARSER_PORT', '8081'))

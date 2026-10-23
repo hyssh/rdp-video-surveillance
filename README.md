@@ -52,6 +52,19 @@ The system includes specialized AI agents for different types of analysis:
  - Apply a custom Content Filtering based on your content
 
 
+## Running on a Mac / CPU
+
+OmniParser does not strictly require an NVIDIA GPU: the device is chosen by `DEVICE` (`auto` default: CUDA if available, else CPU; `cpu`; or `mps` for Apple GPU, experimental and untested). Docker on macOS cannot pass a GPU through, so run the OmniParser service natively and the rest in Docker or natively:
+
+```bash
+cd src/omniparser && bash setup_weights.sh
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-mac.txt
+DEVICE=cpu OMNIPARSER_HOST=0.0.0.0 python server.py   # serves on :8081
+```
+
+Point the orchestrator at it (`OMNIPARSER_HOST=host.docker.internal` when the orchestrator runs in Docker; remove the `omniparser` service from `docker-compose.yml`). CPU inference is much slower than the GPU estimate below; expect minutes per frame for dense screens, so use short clips. Not verified on a Mac in this repo.
+
 ## Azure Integration
 
 For production deployment, this system leverages various Azure services:
@@ -105,7 +118,7 @@ rdp-video-surveillance/
 ## Requirements
 
 - Docker with Docker Compose v2 (`docker compose`)
-- NVIDIA GPU + NVIDIA Container Toolkit (the `omniparser` service reserves one GPU; CPU works only with a modified compose file and is very slow)
+- NVIDIA GPU + NVIDIA Container Toolkit for the default Docker setup (the `omniparser` service reserves one GPU). No NVIDIA GPU (e.g. a Mac)? See [Running on a Mac / CPU](#running-on-a-mac--cpu)
 - Azure resources (no local fallback in this prototype):
   - Storage account (connection string) for videos and extracted frames
   - Azure OpenAI with a vision-capable chat deployment (e.g. `gpt-4.1` / `gpt-4o`, ~450K TPM) and an embedding deployment (e.g. `text-embedding-ada-002`)
