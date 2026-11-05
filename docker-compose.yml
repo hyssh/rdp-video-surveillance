@@ -72,6 +72,7 @@ services:
       - PGPORT=${PGPORT:-5432}
       - PGDATABASE=${PGDATABASE:-postgres}
       - PGPASSWORD=${PGPASSWORD}
+      - PGSSLMODE=${PGSSLMODE:-require}
       - PYTHONPATH=/app
       - LOG_LEVEL=info
     volumes:

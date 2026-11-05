@@ -31,7 +31,7 @@ def init_connection_pool(min_connections=1, max_connections=int(os.getenv("PG_PO
             password=os.getenv("PGPASSWORD"),
             database=os.getenv("PGDATABASE"),
             port=os.getenv("PGPORT"),
-            sslmode='require'  # Required for Azure PostgreSQL security
+            sslmode=os.getenv("PGSSLMODE", "require")  # require by default (Azure PostgreSQL); "disable" for local containers
         )
         logger.info("PostgreSQL connection pool initialized successfully")
     except Exception as e:

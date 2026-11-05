@@ -7,6 +7,16 @@ from psycopg2.extras import execute_batch, execute_values
 
 logger = logging.getLogger(__name__)
 
+
+def split_blob_url(url: str) -> List[str]:
+    """Return [container, *blob path parts]; handles Azure host-style and Azurite/IP path-style URLs."""
+    parsed = urlparse(url)
+    parts = parsed.path.strip('/').split('/')
+    host = (parsed.hostname or "").lower()
+    if ".blob." not in host and len(parts) >= 3:
+        parts = parts[1:]  # path-style: first segment is the account name
+    return parts
+
 _NO_ANALYSIS = {
     "image_description": None, "risk_score": None, "risk_level": None, "action_type": None,
     "ui_elements": None, "frame_width": None, "frame_height": None,
@@ -49,7 +59,7 @@ def insert_frames(video_id: int, frames_data: List[Any]) -> Dict[str, Any]:
                 # Parse container and blob name from URL
                 # URL format: https://accountname.blob.core.windows.net/container/path/to/blob
                 parsed_url = urlparse(url)
-                path_parts = parsed_url.path.strip('/').split('/')
+                path_parts = split_blob_url(url)
                 
                 if len(path_parts) >= 2:
                     container_name = path_parts[0]

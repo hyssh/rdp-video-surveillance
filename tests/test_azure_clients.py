@@ -59,6 +59,16 @@ def test_format_exception_includes_cause_and_is_never_empty():
     assert ac.format_exception(ValueError()).strip()
 
 
+def test_default_options_empty_for_reasoning_models(clean_env):
+    assert llm.default_options() == {}
+
+
+def test_default_options_opt_in(clean_env):
+    clean_env.setenv("LLM_TEMPERATURE", "0.2")
+    clean_env.setenv("LLM_TOP_P", "0.5")
+    assert llm.default_options() == {"temperature": 0.2, "top_p": 0.5}
+
+
 def test_llm_default_models(clean_env):
     assert llm.chat_model() == "gpt-6.1-sol"
     assert llm.embedding_model() == "text-embedding-3-large"
