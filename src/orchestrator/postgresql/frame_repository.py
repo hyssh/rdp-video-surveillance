@@ -150,7 +150,7 @@ def update_frame_with_embedding(frame_id: int, description: str, embedding_vecto
     Args:
         frame_id: ID of the frame to update
         description: Text description of the image
-        embedding_vector: Vector representation of the image (1536 dimensions)
+        embedding_vector: Vector representation of the image (EMBEDDING_DIMENSIONS, default 3072)
         
     Returns:
         bool: True if update was successful
@@ -178,7 +178,7 @@ def search_similar_frames(query_vector: list, threshold: float = 0.75, max_resul
     Search for frames similar to the provided vector
     
     Args:
-        query_vector: Vector to search for (1536 dimensions)
+        query_vector: Vector to search for (EMBEDDING_DIMENSIONS, default 3072)
         threshold: Similarity threshold (0-1, higher means more similar)
         max_results: Maximum number of results to return
         
@@ -190,7 +190,7 @@ def search_similar_frames(query_vector: list, threshold: float = 0.75, max_resul
     try:
         with DatabaseManager() as cursor:
             cursor.execute(
-                "SELECT * FROM search_similar_frames(%s, %s, %s)",
+                "SELECT * FROM search_similar_frames(%s::vector, %s, %s)",
                 (query_vector, threshold, max_results)
             )
             return [dict(row) for row in cursor.fetchall()]
