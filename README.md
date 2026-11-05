@@ -280,6 +280,35 @@ The orchestrator serves the auditor web app at **`http://localhost:8082/ui`** (n
 
 Notes: frame images are served by the orchestrator (`/frames/{id}/image`), so private blob containers are fine. Video clips are only available when the source video and ffmpeg are available; otherwise (e.g. seeded demo sessions) the viewer falls back to the frame filmstrip. There is no login; see the roadmap.
 
+## Example results
+
+Tested end to end with `images/20test.mp4` and `images/80test.mp4` using `gpt-6.1-sol`, `text-embedding-3-large` (3072-dim, stored as `halfvec` with an HNSW index), Entra ID auth via `az login`, and OmniParser on a local RTX 4050 Laptop GPU (Postgres/pgvector and Azurite running locally).
+
+| Video | Frames | Verdict | Highlights |
+|---|---|---|---|
+| `20test.mp4` | 7 | **Critical (~75-85)** | Unmasked sample password visible in Notepad |
+| `80test.mp4` | 25 | **Low (~15)** | Terminal and Start-menu browsing, no sensitive data exposure |
+
+Dashboard of analyzed sessions:
+
+![Dashboard](docs/images/01-dashboard.png)
+
+20test session review - critical finding with the plaintext password frame:
+
+![20test session review](docs/images/02-session-20test-critical.png)
+
+80test session review - low-risk session:
+
+![80test session review](docs/images/03-session-80test-low.png)
+
+Insights across sessions:
+
+![Insights](docs/images/04-insights.png)
+
+Ask tab - semantic search over frame embeddings plus an LLM answer with frame citations:
+
+![Ask a question about a session](docs/images/05-ask-session.png)
+
 ## Demo data (seeding)
 
 No Azure video analysis is needed to try the UI. `scripts/seed_demo_data.py` generates three synthetic RDP sessions (fake Windows desktops rendered with Pillow, 1280x720 frames every 3 s) and inserts them into PostgreSQL:
