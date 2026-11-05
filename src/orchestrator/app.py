@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from azure.storage.blob import BlobServiceClient, ContentSettings
+from azure_clients import get_blob_service_client, storage_configured, get_embedding_dimensions, format_exception
 from postgresql import (
     insert_video, insert_frames, update_frames_with_embeddings, get_frames_by_video_id,
     update_video_with_security_review, list_videos, get_video_detail, list_frames,
@@ -159,9 +160,17 @@ async def healthcheck():
         raise ApiError(502, "upstream_omniparser_error", f"Omniparser API returned HTTP {response.status_code}: {response.text}", "healthcheck")
 
 
+def _require_storage(stage: str, job_id: Optional[str] = None) -> None:
+    """Storage is configured by a connection string or by AZURE_STORAGE_ACCOUNT_NAME (Entra ID)."""
+    if not storage_configured():
+        raise ApiError(400, "missing_config",
+                       "Missing required environment variable(s): AZURE_STORAGE_CONNECTION_STRING "
+                       "(or AZURE_STORAGE_ACCOUNT_NAME for Entra ID auth)", stage, job_id)
+
+
 def _upload_blob_sync(connection_string: str, container_name: str, blob_name: str, file_content: Any, content_type: str) -> str:
     """Blocking Azure upload. file_content may be bytes or a binary file object."""
-    blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+    blob_service_client = get_blob_service_client(connection_string)
     container_client = blob_service_client.get_container_client(container_name)
     if not container_client.exists():
         container_client.create_container()
@@ -191,8 +200,8 @@ async def upload_to_blob_storage(file: UploadFile, container_name: str, blob_nam
     Returns:
         dict: Information about the uploaded blob
     """
-    require_env(["AZURE_STORAGE_CONNECTION_STRING"], "uploading_video")
-    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+    _require_storage("uploading_video")
+    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
     with api_errors("uploading_video", "storage"):
         if not blob_name:
             blob_name = file.filename or f"{uuid.uuid4()}.jpg"
@@ -317,7 +326,7 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
     await _job_update(job_id, frames_total=total)
 
     with api_errors(stage, "storage", job_id):
-        blob_service_client = BlobServiceClient.from_connection_string(os.getenv("AZURE_STORAGE_CONNECTION_STRING", ""))
+        blob_service_client = get_blob_service_client(os.getenv("AZURE_STORAGE_CONNECTION_STRING", ""))
     azuretxtembedding = _embedding_service()
     with api_errors(stage, "openai", job_id):
         chat_completion_agent, chat_completion_agent_session = await get_chat_completion_agent_session(
@@ -525,7 +534,7 @@ def _parse_risk_level(review_content: str) -> Optional[str]:
 
 
 def _required_ingest_env() -> list:
-    names = ["AZURE_STORAGE_CONNECTION_STRING"]
+    names = []
     if os.getenv("OMNIPARSER_ENABLE", "true").lower() == "true":
         names += ["OMNIPARSER_HOST", "OMNIPARSER_PORT"]
     return names
@@ -654,6 +663,7 @@ async def ingest_video_v2(
     Poll GET /jobs/{job_id} for progress. With ?wait=true the pipeline runs inline and the result is returned.
     """
     require_env(_required_ingest_env(), "validating_request")
+    _require_storage("validating_request")
     if os.getenv("CHAT_COMPLETION_ENABLE", "true").lower() == "true":
         _require_llm_config("validating_request")
     if not file.filename:
@@ -834,7 +844,7 @@ async def get_frame_endpoint(frame_id: int):
 
 
 def _download_frame_sync(connection_string: str, container_name: str, blob_name: str) -> bytes:
-    return _download_blob_sync(BlobServiceClient.from_connection_string(connection_string), container_name, blob_name)
+    return _download_blob_sync(get_blob_service_client(connection_string), container_name, blob_name)
 
 
 @orchestrator.get("/frames/{frame_id}/image", response_class=Response, responses={
@@ -851,7 +861,7 @@ async def get_frame_image(frame_id: int):
         if not path or not os.path.isfile(path):
             raise ApiError(404, "image_unavailable", f"Demo asset {frame['blob_name']} not found", stage)
         return FileResponse(path, headers=headers)
-    require_env(["AZURE_STORAGE_CONNECTION_STRING"], stage)
+    _require_storage(stage)
     try:
         data = await asyncio.to_thread(
             _download_frame_sync, os.getenv("AZURE_STORAGE_CONNECTION_STRING", ""),
@@ -881,10 +891,10 @@ async def _cached_source_video(video_id: int, stage: str) -> str:
     """Local path of the (cached) source video; raises 404 clip_unavailable when it can't be obtained."""
     await _get_video_or_404(video_id, stage)
     video = await asyncio.to_thread(get_video_by_id, video_id)
-    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
     if not video or video.get("container_name") == DEMO_CONTAINER or not video.get("blob_name"):
         raise ApiError(404, "clip_unavailable", f"No source video is stored for video {video_id}", stage)
-    if not connection_string:
+    if not storage_configured():
         raise ApiError(404, "clip_unavailable", "Blob storage is not configured, source video unavailable", stage)
     path = media_utils.source_cache_path(video_id, video["blob_name"])
     if not os.path.exists(path):
@@ -972,7 +982,7 @@ def split_video(video_path: str, blob_conn_str: str, output_dir: str=r"preproces
     """
     frame_blob_paths = []
     local_temp_dir = None
-    
+    cap = None
     try:
         # Check if the video file exists
         if not os.path.isfile(video_path):
@@ -987,7 +997,7 @@ def split_video(video_path: str, blob_conn_str: str, output_dir: str=r"preproces
         video_name = os.path.splitext(os.path.basename(video_path))[0]
 
         # Initialize Azure Blob Storage client
-        blob_service_client = BlobServiceClient.from_connection_string(blob_conn_str)
+        blob_service_client = get_blob_service_client(blob_conn_str)
         container_client = blob_service_client.get_container_client(output_dir)
         
         # Create container if it doesn't exist
@@ -1004,7 +1014,7 @@ def split_video(video_path: str, blob_conn_str: str, output_dir: str=r"preproces
         if fps <= 0:
             raise ValueError(f"Invalid frame rate: {fps}")
             
-        frame_interval = int(fps * interval)
+        frame_interval = max(1, int(fps * interval))
 
         frame_count = 0
         while True:
@@ -1057,16 +1067,14 @@ def split_video(video_path: str, blob_conn_str: str, output_dir: str=r"preproces
         return frame_blob_paths
 
     except Exception as e:
-        print(f"Error processing video: {str(e)}")
-        # Return any frames that were successfully processed
-        return frame_blob_paths
-        
+        logging.error(f"Error processing video {video_path}: {format_exception(e)}")
+        raise
+
     finally:
+        if cap is not None:
+            cap.release()
         if local_temp_dir:
             shutil.rmtree(local_temp_dir, ignore_errors=True)
-        # Ensure resources are released
-        # if 'cap' in locals() and cap is not None:
-        #     cap.release()
         gc.collect()
 
 

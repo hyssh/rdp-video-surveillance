@@ -1,5 +1,11 @@
 **__pycache__
 **weights
+test_results/
+.vscode/settings.json
+venv/
+.venv/
+.pytest_cache/
+.ruff_cache/
 .env
 .env.docker
 **temp**

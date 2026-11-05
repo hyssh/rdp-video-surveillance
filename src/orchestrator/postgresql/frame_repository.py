@@ -165,7 +165,7 @@ def update_frame_with_embedding(frame_id: int, description: str, embedding_vecto
     Args:
         frame_id: ID of the frame to update
         description: Text description of the image
-        embedding_vector: Vector representation of the image (1536 dimensions)
+        embedding_vector: Vector representation of the image (EMBEDDING_DIMENSIONS values, default 3072)
         
     Returns:
         bool: True if update was successful
@@ -287,7 +287,7 @@ def search_similar_frames(query_vector: list, threshold: Optional[float] = 0.75,
     Search for frames similar to the provided vector
     
     Args:
-        query_vector: Vector to search for (1536 dimensions)
+        query_vector: Vector to search for (EMBEDDING_DIMENSIONS values, default 3072)
         threshold: Similarity threshold (0-1, higher means more similar). Only applied when
             video_id is given (the legacy SQL function ignores it); None disables it.
         max_results: Maximum number of results to return
@@ -298,25 +298,30 @@ def search_similar_frames(query_vector: list, threshold: Optional[float] = 0.75,
         List[Dict]: List of similar frames with similarity scores
     """
     from .connection import DatabaseManager
+    from .schemas import distance_cast, get_embedding_dimensions
     
     try:
         with DatabaseManager() as cursor:
+            cast = distance_cast(get_embedding_dimensions())
+            # Same expression as the halfvec HNSW index (dims > 2000) so the index stays usable
+            col = f"embedding::{cast}" if cast else "embedding"
+            qry = f"%(q)s::{cast}" if cast else "%(q)s::vector"
             if video_id is None:
                 cursor.execute(
-                    "SELECT * FROM search_similar_frames(%s, %s, %s)",
+                    "SELECT * FROM search_similar_frames(%s::vector, %s, %s)",
                     (query_vector, 0.75 if threshold is None else threshold, max_results)
                 )
             else:
-                # pgvector text literal; similarity is cosine for unit-length embeddings (L2 ops keep the IVFFlat index usable)
+                # pgvector text literal; similarity is cosine for unit-length embeddings (L2 ops keep the index usable)
                 vector_literal = "[" + ",".join(repr(float(x)) for x in query_vector) + "]"
                 cursor.execute(
-                    """
+                    f"""
                     SELECT * FROM (
                         SELECT id, video_id, blob_name, url, frame_timestamp, image_description,
-                               1 - ((embedding <-> %(q)s::vector) ^ 2) / 2 AS similarity
+                               1 - ((({col}) <-> {qry}) ^ 2) / 2 AS similarity
                         FROM frames
                         WHERE video_id = %(video_id)s AND embedding IS NOT NULL
-                        ORDER BY embedding <-> %(q)s::vector
+                        ORDER BY ({col}) <-> {qry}
                         LIMIT %(limit)s
                     ) ranked
                     WHERE %(threshold)s::float IS NULL OR similarity >= %(threshold)s::float

@@ -1,0 +1,1 @@
+curl -X POST "http://localhost:8082/v2/ingest-video/" -H "accept: application/json"  -H "Content-Type: multipart/form-data" -F "file=@C:\Users\hyssh\Videos\rdp\Azure_PIM_demo.mp4"

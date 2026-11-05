@@ -22,12 +22,12 @@ def clip_cache_path(video_id: int, start: float, duration: float) -> str:
 
 def download_blob_to_file_sync(connection_string: str, container_name: str, blob_name: str, destination: str) -> None:
     """Stream a blob to disk (never held in memory); the file appears at destination only when complete."""
-    from azure.storage.blob import BlobServiceClient
+    from azure_clients import get_blob_service_client
 
     os.makedirs(os.path.dirname(destination), exist_ok=True)
     partial = f"{destination}.{uuid.uuid4().hex}.part"
     try:
-        blob_client = BlobServiceClient.from_connection_string(connection_string) \
+        blob_client = get_blob_service_client(connection_string) \
             .get_container_client(container_name).get_blob_client(blob_name)
         with open(partial, "wb") as out:
             blob_client.download_blob().readinto(out)

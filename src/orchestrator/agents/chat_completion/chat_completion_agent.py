@@ -1,7 +1,9 @@
 import yaml
+import os
 import asyncio
 import logging
 import uuid
+from azure_clients import format_exception
 from dotenv import load_dotenv
 from typing import Optional
 from fastapi import HTTPException
@@ -17,7 +19,10 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
-def load_prompts(prompt_path: str="agents/chat_completion/agent.yml") -> str:
+DEFAULT_PROMPT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent.yml")
+
+
+def load_prompts(prompt_path: str = DEFAULT_PROMPT_PATH) -> str:
     """
     Load a prompt from a file.
 
@@ -54,9 +59,8 @@ async def chat(agent: Agent,
     try:
         return await agent.run(image_message(base64_image, full_prompt), session=session)
     except Exception as e:
-        logger.error(f"Error analyzing image: {e}", exc_info=True)
-        logger.error(f"Exception details: {getattr(e, '__dict__', None)}")
-        raise HTTPException(status_code=500, detail=f"{getattr(e, '__dict__', None)}")
+        logger.error(f"Error analyzing image: {format_exception(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=format_exception(e))
 
 
 async def get_chat_completion_agent_session(session_id: Optional[str] = None):

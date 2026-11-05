@@ -1,4 +1,5 @@
 import yaml
+import os
 import logging
 from dotenv import load_dotenv
 from typing import List, Optional, Dict, Any
@@ -15,7 +16,10 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 
-def load_prompts(prompt_path: str="agents/security_reviewer/agent.yml") -> str:
+DEFAULT_PROMPT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent.yml")
+
+
+def load_prompts(prompt_path: str = DEFAULT_PROMPT_PATH) -> str:
     """
     Load a prompt from a file.
 

@@ -106,4 +106,4 @@ if __name__ == "__main__":
     #     sys.exit(1)
     # else:
     #     print("Omniparser initialized successfully.")
-    uvicorn.run("server:app", port=config['port'], reload=True)
+    uvicorn.run("server:app", host=config['host'], port=config['port'], reload=os.getenv('UVICORN_RELOAD', 'false').lower() == 'true')

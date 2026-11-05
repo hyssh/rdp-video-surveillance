@@ -5,8 +5,10 @@ Environment variables (the first one that is set wins):
   api key    AZURE_OPENAI_API_KEY | AZURE_OPENAI_APIKEY   (unset -> Entra ID via DefaultAzureCredential)
   api ver    AZURE_OPENAI_API_VERSION
   chat       AZURE_OPENAI_CHAT_COMPLETION_MODEL | AZURE_OPENAI_CHAT_DEPLOYMENT_NAME
+             | AZURE_AI_AGENT_CHAT_MODEL_DEPLOYMENT_NAME       (default gpt-6.1-sol)
   embedding  AZURE_OPENAI_EMBEDDING_MODEL | AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME
-             | AZURE_AI_AGENT_EMBEDDING_MODEL_DEPLOYMENT_NAME   (default text-embedding-ada-002)
+             | AZURE_AI_AGENT_EMBEDDING_MODEL_DEPLOYMENT_NAME   (default text-embedding-3-large)
+  dimensions EMBEDDING_DIMENSIONS (default 3072; sets the Postgres vector size)
   embedding endpoint / key fall back to AZURE_TEXT_EMBEDDING_ENDPOINT / AZURE_TEXT_EMBEDDING_APIKEY,
   then to the chat endpoint / key.
 """
@@ -17,7 +19,8 @@ from agent_framework import Agent, AgentSession, Content, Message
 from agent_framework.openai import OpenAIChatCompletionClient, OpenAIEmbeddingClient
 
 DEFAULT_API_VERSION = "2024-12-01-preview"
-DEFAULT_EMBEDDING_MODEL = "text-embedding-ada-002"
+DEFAULT_EMBEDDING_MODEL = "text-embedding-3-large"
+DEFAULT_CHAT_MODEL = "gpt-6.1-sol"
 DEFAULT_OPTIONS = {"temperature": 0.1, "top_p": 0.1}
 
 
@@ -29,8 +32,9 @@ def _first_env(*names: str, default: Optional[str] = None) -> Optional[str]:
     return default
 
 
-def chat_model() -> Optional[str]:
-    return _first_env("AZURE_OPENAI_CHAT_COMPLETION_MODEL", "AZURE_OPENAI_CHAT_DEPLOYMENT_NAME")
+def chat_model() -> str:
+    return _first_env("AZURE_OPENAI_CHAT_COMPLETION_MODEL", "AZURE_OPENAI_CHAT_DEPLOYMENT_NAME",
+                      "AZURE_AI_AGENT_CHAT_MODEL_DEPLOYMENT_NAME", default=DEFAULT_CHAT_MODEL)
 
 
 def embedding_model() -> str:
@@ -89,8 +93,20 @@ def make_embedding_client() -> OpenAIEmbeddingClient:
 
 
 async def embed_texts(client: OpenAIEmbeddingClient, texts: List[str]) -> List[List[float]]:
-    result = await client.get_embeddings(list(texts))
-    return [list(item.vector) for item in result]
+    from azure_clients import env_first, get_embedding_dimensions
+
+    expected = get_embedding_dimensions()
+    # Only request a size explicitly when EMBEDDING_DIMENSIONS is set (text-embedding-ada-002 rejects the parameter)
+    options = {"dimensions": expected} if env_first("EMBEDDING_DIMENSIONS") else None
+    result = await client.get_embeddings(list(texts), options=options)
+    vectors = [list(item.vector) for item in result]
+    for vector in vectors:
+        if len(vector) != expected:
+            raise ValueError(
+                f"Embedding has {len(vector)} dimensions but EMBEDDING_DIMENSIONS={expected}; "
+                "set EMBEDDING_DIMENSIONS to the model's output size (text-embedding-3-large: 3072)"
+            )
+    return vectors
 
 
 def image_message(base64_image: str, text: str, mime_type: str = "image/jpeg") -> Message:

@@ -116,7 +116,7 @@ rdp-video-surveillance/
 - NVIDIA GPU + NVIDIA Container Toolkit (the `omniparser` service reserves one GPU; CPU works only with a modified compose file and is very slow)
 - Azure resources (no local fallback in this prototype):
   - Storage account (connection string) for videos and extracted frames
-  - Azure OpenAI with a vision-capable chat deployment (e.g. `gpt-4.1` / `gpt-4o`, ~450K TPM) and an embedding deployment (e.g. `text-embedding-ada-002`)
+  - Azure OpenAI with a vision-capable chat deployment (default `gpt-6.1-sol`) and an embedding deployment (default `text-embedding-3-large`, 3072 dims)
   - Azure Database for PostgreSQL with the `vector` (pgvector) extension allow-listed; tables are created automatically when the orchestrator starts
 - A sample RDP recording (`.mp4`). None is shipped with the repo (`*.mp4` is git-ignored).
 - Python 3.12+ only if you want to run `test/test.py` or develop locally (`pip install -r requirements.txt`)
@@ -152,6 +152,11 @@ copy .env.example .env
 ```
 Edit `.env` and replace every `####` placeholder (storage, Azure OpenAI, PostgreSQL). The agents and embeddings use [Microsoft Agent Framework](https://learn.microsoft.com/agent-framework/): set `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` (leave empty to use Entra ID / `az login`), `AZURE_OPENAI_CHAT_COMPLETION_MODEL` and `AZURE_OPENAI_EMBEDDING_MODEL`; the older `AZURE_OPENAI_APIKEY` / `*_DEPLOYMENT_NAME` names still work. `docker compose` reads `.env` automatically. `.env.docker.example` is an equivalent variant (use it with `docker compose --env-file .env.docker up`). `.env.example` documents every variable, including the optional tuning knobs.
 
+**Authentication (key or Entra ID).** With `AZURE_OPENAI_API_KEY` empty the agents/embeddings use `DefaultAzureCredential` (`az login`, `AZURE_CLIENT_ID`/`AZURE_TENANT_ID`/`AZURE_CLIENT_SECRET`, or managed identity). Storage works the same way: `AZURE_STORAGE_CONNECTION_STRING` if set, otherwise `AZURE_STORAGE_ACCOUNT_NAME` + Entra ID (role *Storage Blob Data Contributor*). In Docker pass the service principal variables or uncomment the `~/.azure` mount in `docker-compose.yml`.
+
+**Embedding dimensions.** `EMBEDDING_DIMENSIONS` (default `3072`, matching `text-embedding-3-large`) sets the `frames.embedding` pgvector column and the size requested from the model; it must match the model output (ada-002 = 1536). pgvector indexes on `vector` are limited to 2000 dimensions, so for 2001-4000 dimensions the schema builds an HNSW index on a `halfvec` cast (search uses the same cast); above 4000 there is no index (exact scan; requires pgvector >= 0.7 for `halfvec`). On startup a column with a different size (e.g. the former `vector(1536)`) is migrated: old indexes are dropped and the column retyped, **resetting stored embeddings to NULL** (re-ingest to regenerate).
+
+**Tests.** `pip install -r src/orchestrator/requirements.txt pytest pytest-asyncio httpx && python -m pytest` (Azure OpenAI, Blob, Postgres and OmniParser are mocked).
 ### 3. Start the services
 
 ```bash

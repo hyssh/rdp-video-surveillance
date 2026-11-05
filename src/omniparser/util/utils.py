@@ -15,17 +15,25 @@ import numpy as np
 # %matplotlib inline
 from matplotlib import pyplot as plt
 import easyocr
-from paddleocr import PaddleOCR
 reader = easyocr.Reader(['en'])
-paddle_ocr = PaddleOCR(
-    lang='en',  # other lang also available
-    use_angle_cls=False,
-    use_gpu=False,  # using cuda will conflict with pytorch in the same process
-    show_log=False,
-    max_batch_size=1024,
-    use_dilation=True,  # improves accuracy
-    det_db_score_mode='slow',  # improves accuracy
-    rec_batch_num=1024)
+_paddle_ocr = None
+
+
+def get_paddle_ocr():
+    """Create PaddleOCR on first use; it is optional and only needed with use_paddleocr=True."""
+    global _paddle_ocr
+    if _paddle_ocr is None:
+        from paddleocr import PaddleOCR
+        _paddle_ocr = PaddleOCR(
+            lang='en',  # other lang also available
+            use_angle_cls=False,
+            use_gpu=False,  # using cuda will conflict with pytorch in the same process
+            show_log=False,
+            max_batch_size=1024,
+            use_dilation=True,  # improves accuracy
+            det_db_score_mode='slow',  # improves accuracy
+            rec_batch_num=1024)
+    return _paddle_ocr
 import time
 import base64
 
@@ -44,7 +52,7 @@ from util.box_annotator import BoxAnnotator
 def get_caption_model_processor(model_name, model_name_or_path="Salesforce/blip2-opt-2.7b", device=None):
     if not device:
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"Using device: {device} {torch.cuda.get_device_name(0)}")
+        print(f"Using device: {device}" + (f" {torch.cuda.get_device_name(0)}" if device == "cuda" else ""))
     if model_name == "blip2":
         from transformers import Blip2Processor, Blip2ForConditionalGeneration
         processor = Blip2Processor.from_pretrained("Salesforce/blip2-opt-2.7b")
@@ -424,10 +432,11 @@ def get_som_labeled_img(image_source: Union[str, Image.Image], model=None, BOX_T
     # annotate the image with labels
     if ocr_bbox:
         ocr_bbox = torch.tensor(ocr_bbox) / torch.Tensor([w, h, w, h])
-        ocr_bbox=ocr_bbox.tolist()
+        ocr_bbox = ocr_bbox.tolist()
     else:
         print('no ocr bbox!!!')
-        ocr_bbox = None
+        ocr_bbox = []
+        ocr_text = []
 
     ocr_bbox_elem = [{'type': 'text', 'bbox':box, 'interactivity':False, 'content':txt, 'source': 'box_ocr_content_ocr'} for box, txt in zip(ocr_bbox, ocr_text) if int_box_area(box, w, h) > 0] 
     xyxy_elem = [{'type': 'icon', 'bbox':box, 'interactivity':True, 'content':None} for box in xyxy.tolist() if int_box_area(box, w, h) > 0]
@@ -514,7 +523,7 @@ def check_ocr_box(image_source: Union[str, Image.Image], display_img = True, out
             text_threshold = 0.5
         else:
             text_threshold = easyocr_args['text_threshold']
-        result = paddle_ocr.ocr(image_np, cls=False)[0]
+        result = get_paddle_ocr().ocr(image_np, cls=False)[0]
         coord = [item[0] for item in result if item[1][1] > text_threshold]
         text = [item[1][0] for item in result if item[1][1] > text_threshold]
     else:  # EasyOCR
