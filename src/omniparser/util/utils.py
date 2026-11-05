@@ -52,7 +52,7 @@ from util.box_annotator import BoxAnnotator
 def get_caption_model_processor(model_name, model_name_or_path="Salesforce/blip2-opt-2.7b", device=None):
     if not device:
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"Using device: {device} {torch.cuda.get_device_name(0)}")
+        print(f"Using device: {device}" + (f" {torch.cuda.get_device_name(0)}" if device == "cuda" else ""))
     if model_name == "blip2":
         from transformers import Blip2Processor, Blip2ForConditionalGeneration
         processor = Blip2Processor.from_pretrained("Salesforce/blip2-opt-2.7b")

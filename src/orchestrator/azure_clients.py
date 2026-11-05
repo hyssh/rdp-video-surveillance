@@ -1,22 +1,19 @@
-"""Shared Azure client factories for the orchestrator.
+"""Shared Azure helpers for the orchestrator: Entra ID credential, Blob client, embedding size.
 
-Every factory supports two authentication modes:
-  * API key / connection string when the corresponding env var is set (legacy path)
+Authentication supports two modes:
+  * API key / connection string when the corresponding env var is set
   * Microsoft Entra ID via DefaultAzureCredential (env service principal, managed identity,
     Azure CLI login, ...) when no key is set
+Chat/embedding clients live in agents/llm.py.
 """
 import os
 import logging
 from functools import lru_cache
-from typing import Callable, Optional
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-COGNITIVE_SERVICES_SCOPE = "https://cognitiveservices.azure.com/.default"
-DEFAULT_CHAT_DEPLOYMENT = "gpt-6.1-sol"
-DEFAULT_EMBEDDING_DEPLOYMENT = "text-embedding-3-large"
 DEFAULT_EMBEDDING_DIMENSIONS = 3072
-DEFAULT_OPENAI_API_VERSION = "2025-04-01-preview"
 MAX_EMBEDDING_DIMENSIONS = 16000  # pgvector hard limit for the `vector` type
 
 
@@ -35,22 +32,6 @@ def get_credential():
     return DefaultAzureCredential()
 
 
-def get_token_provider(scope: str = COGNITIVE_SERVICES_SCOPE) -> Callable[[], str]:
-    from azure.identity import get_bearer_token_provider
-    return get_bearer_token_provider(get_credential(), scope)
-
-
-def normalize_openai_endpoint(endpoint: Optional[str]) -> Optional[str]:
-    """Accept both the resource root and the '/openai/v1' style URL."""
-    if not endpoint:
-        return endpoint
-    endpoint = endpoint.strip().rstrip("/")
-    for suffix in ("/openai/v1", "/openai"):
-        if endpoint.lower().endswith(suffix):
-            endpoint = endpoint[: -len(suffix)]
-    return endpoint
-
-
 def get_embedding_dimensions() -> int:
     """Vector size stored in Postgres (EMBEDDING_DIMENSIONS, default 3072)."""
     raw = env_first("EMBEDDING_DIMENSIONS")
@@ -65,67 +46,14 @@ def get_embedding_dimensions() -> int:
     return value
 
 
-def get_chat_deployment_name() -> str:
-    return env_first("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", "AZURE_AI_AGENT_CHAT_MODEL_DEPLOYMENT_NAME",
-                     default=DEFAULT_CHAT_DEPLOYMENT)
+def storage_configured() -> bool:
+    return bool(env_first("AZURE_STORAGE_CONNECTION_STRING", "AZURE_STORAGE_ACCOUNT_NAME"))
 
 
-def get_embedding_deployment_name() -> str:
-    return env_first("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME", "AZURE_AI_AGENT_EMBEDDING_MODEL_DEPLOYMENT_NAME",
-                     default=DEFAULT_EMBEDDING_DEPLOYMENT)
-
-
-def _auth_kwargs(api_key: Optional[str]) -> dict:
-    if api_key:
-        return {"api_key": api_key}
-    logger.info("No API key configured; using Microsoft Entra ID token authentication")
-    return {"ad_token_provider": get_token_provider()}
-
-
-def build_chat_completion_service(service_id: Optional[str] = None):
-    from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion
-    endpoint = normalize_openai_endpoint(env_first("AZURE_OPENAI_ENDPOINT"))
-    if not endpoint:
-        raise ValueError("AZURE_OPENAI_ENDPOINT is not configured")
-    kwargs = dict(
-        endpoint=endpoint,
-        deployment_name=get_chat_deployment_name(),
-        api_version=env_first("AZURE_OPENAI_API_VERSION", default=DEFAULT_OPENAI_API_VERSION),
-        **_auth_kwargs(env_first("AZURE_OPENAI_APIKEY")),
-    )
-    if service_id:
-        kwargs["service_id"] = service_id
-    return AzureChatCompletion(**kwargs)
-
-
-def build_embedding_service():
-    from semantic_kernel.connectors.ai.open_ai import AzureTextEmbedding
-    endpoint = normalize_openai_endpoint(env_first("AZURE_TEXT_EMBEDDING_ENDPOINT", "AZURE_OPENAI_ENDPOINT"))
-    if not endpoint:
-        raise ValueError("AZURE_TEXT_EMBEDDING_ENDPOINT / AZURE_OPENAI_ENDPOINT is not configured")
-    return AzureTextEmbedding(
-        service_id="azure-text-embedding",
-        endpoint=endpoint,
-        deployment_name=get_embedding_deployment_name(),
-        api_version=env_first("AZURE_TEXT_EMBEDDING_API_VERSION", "AZURE_OPENAI_API_VERSION",
-                              default=DEFAULT_OPENAI_API_VERSION),
-        **_auth_kwargs(env_first("AZURE_TEXT_EMBEDDING_APIKEY", "AZURE_OPENAI_APIKEY")),
-    )
-
-
-def embedding_settings():
-    """Ask the service for EMBEDDING_DIMENSIONS only when it is set explicitly
-    (text-embedding-3-* supports shortening; ada-002 rejects the parameter)."""
-    if env_first("EMBEDDING_DIMENSIONS") is None:
-        return None
-    from semantic_kernel.connectors.ai.open_ai import OpenAIEmbeddingPromptExecutionSettings
-    return OpenAIEmbeddingPromptExecutionSettings(dimensions=get_embedding_dimensions())
-
-
-def get_blob_service_client():
-    """Connection string when set, otherwise AZURE_STORAGE_ACCOUNT_NAME + Entra ID."""
+def get_blob_service_client(connection_string: Optional[str] = None):
+    """Connection string (argument or env) when set, otherwise AZURE_STORAGE_ACCOUNT_NAME + Entra ID."""
     from azure.storage.blob import BlobServiceClient
-    connection_string = env_first("AZURE_STORAGE_CONNECTION_STRING")
+    connection_string = connection_string or env_first("AZURE_STORAGE_CONNECTION_STRING")
     if connection_string:
         return BlobServiceClient.from_connection_string(connection_string)
     account_name = env_first("AZURE_STORAGE_ACCOUNT_NAME")
@@ -135,7 +63,7 @@ def get_blob_service_client():
 
 
 def format_exception(exc: BaseException) -> str:
-    """Readable message with the cause chain (SK/OpenAI wrap the real error)."""
+    """Readable message with the cause chain, never empty."""
     parts, seen = [], set()
     cur: Optional[BaseException] = exc
     while cur is not None and id(cur) not in seen and len(parts) < 5:

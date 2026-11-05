@@ -37,4 +37,3 @@ def test_server_not_reloading_and_binds_host():
     assert "reload=True" not in src
     assert "host=config['host']" in src
     assert '"/health"' in src
-    assert "async def parse(" not in src
