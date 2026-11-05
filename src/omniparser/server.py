@@ -36,7 +36,8 @@ class ParseRequest(BaseModel):
     base64_image: str
 
 @app.post("/parse/")
-async def parse(parse_request: ParseRequest):
+def parse(parse_request: ParseRequest):
+    # sync def: FastAPI runs blocking GPU inference in its threadpool instead of the event loop
     # print('start parsing...')
     start = time.time()
     dino_labled_img, parsed_content_list = omniparser.parse(parse_request.base64_image)
@@ -52,6 +53,7 @@ async def test_org_image():
     return Response(content=image_bytes, media_type="image/jpeg")
 
 
+@app.get("/health")
 @app.get("/probe/")
 async def root():
     return {"message": "Omniparser API ready"}
@@ -75,4 +77,4 @@ if __name__ == "__main__":
     #     sys.exit(1)
     # else:
     #     print("Omniparser initialized successfully.")
-    uvicorn.run("server:app", port=config['port'], reload=True)
+    uvicorn.run("server:app", host=config['host'], port=config['port'], reload=os.getenv('UVICORN_RELOAD', 'false').lower() == 'true')
