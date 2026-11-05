@@ -8,3 +8,9 @@
 v2_video300.cmd
 v1_video20.cmd
 v2_video20.cmd
+test_results/
+.vscode/settings.json
+venv/
+.venv/
+.pytest_cache/
+.ruff_cache/

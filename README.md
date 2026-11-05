@@ -148,8 +148,24 @@ docker run --gpus all -p 8081:8081 rdp-video-surveillance-omniparser uvicorn ser
 
 Run Orchestrator:
 ```cmd
-docker run -p 8082:8082 rdp-video-surveillance-orchestrator uvicorn app:app --host 0.0.0.0 --port 8082
+docker run -p 8082:8082 --env-file .env rdp-video-surveillance-orchestrator uvicorn app:orchestrator --host 0.0.0.0 --port 8082
 ```
+
+### Configuration: authentication and embeddings
+
+Copy `.env.exmaple` to `.env` and fill in your endpoints. Defaults: chat model `gpt-6.1-sol`, embedding model `text-embedding-3-large`.
+
+**Authentication (API key or Microsoft Entra ID).** Leave `AZURE_OPENAI_APIKEY` / `AZURE_TEXT_EMBEDDING_APIKEY` empty to use Entra ID via `DefaultAzureCredential` (`az login`, managed identity, or `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_CLIENT_SECRET`). When a key is set it is used as before. Storage works the same way: `AZURE_STORAGE_CONNECTION_STRING` if set, otherwise `AZURE_STORAGE_ACCOUNT_NAME` + Entra ID (needs *Storage Blob Data Contributor*). In Docker, pass the service principal variables or uncomment the `~/.azure` mount in `docker-compose.yml`.
+
+**Embedding dimensions.** `EMBEDDING_DIMENSIONS` (default `3072`, matching `text-embedding-3-large`) sets the `frames.embedding` pgvector column size and must match the embedding model output. pgvector indexes on `vector` are limited to 2000 dimensions, so for 2001-4000 dimensions the schema uses an HNSW index on a `halfvec` cast (search uses the same cast); above 4000 there is no index (exact scan). On startup an existing column with a different dimension (e.g. the former `vector(1536)`) is migrated: the old index is dropped and the column retyped, **resetting existing embeddings to NULL** (re-run ingestion to regenerate them). Requires pgvector >= 0.7 for `halfvec`.
+
+### Running the tests
+
+```cmd
+pip install -r src/orchestrator/requirements.txt pytest pytest-asyncio httpx
+python -m pytest
+```
+All cloud services (Azure OpenAI, Blob, Postgres) and OmniParser are mocked.
 
 ### 5. Testing the System
 
@@ -160,7 +176,7 @@ python test/test.py
 
 **Test Video Ingestion**
 ```cmd
-curl -X POST "http://localhost:8082/ingest-video/" -H "accept: application/json" -H "Content-Type: multipart/form-data" -F "file=@images/80test.mp4"
+curl -X POST "http://localhost:8082/v2/ingest-video/" -H "accept: application/json" -H "Content-Type: multipart/form-data" -F "file=@images/80test.mp4"
 ```
 
 
