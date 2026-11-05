@@ -21,7 +21,14 @@ from agent_framework.openai import OpenAIChatCompletionClient, OpenAIEmbeddingCl
 DEFAULT_API_VERSION = "2024-12-01-preview"
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-large"
 DEFAULT_CHAT_MODEL = "gpt-6.1-sol"
-DEFAULT_OPTIONS = {"temperature": 0.1, "top_p": 0.1}
+def default_options() -> dict:
+    """Sampling options are opt-in: reasoning models (e.g. gpt-6.1-sol) reject temperature/top_p."""
+    options = {}
+    for env, key in (("LLM_TEMPERATURE", "temperature"), ("LLM_TOP_P", "top_p")):
+        raw = os.getenv(env, "").strip()
+        if raw:
+            options[key] = float(raw)
+    return options
 
 
 def _first_env(*names: str, default: Optional[str] = None) -> Optional[str]:
@@ -80,7 +87,7 @@ def make_chat_client() -> OpenAIChatCompletionClient:
 
 
 def make_agent(name: str, instructions: str) -> Agent:
-    return make_chat_client().as_agent(name=name, instructions=instructions, default_options=dict(DEFAULT_OPTIONS))
+    return make_chat_client().as_agent(name=name, instructions=instructions, default_options=default_options())
 
 
 def make_embedding_client() -> OpenAIEmbeddingClient:
