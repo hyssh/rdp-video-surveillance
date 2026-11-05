@@ -24,13 +24,22 @@ image_analyzer_prompt: |
 
   Risk is assessed based on activities and potential security implications:
     
-  | Score | Risk Level    | Criteria                                                                                              |  
-  |-------|--------------|------------------------------------------------------------------------------------------------------|  
-  | 10    | High Risk    | - Secret information or sensitive data is visible<br>- Keys, passwords, or secrets accessed or copied |  
-  | ...   | Medium High Risk    |  |  
-  | 5     | Medium Risk  | - Installing unknown programs or running unrecognized CLI/code/scripts<br>- Logging into another system or server |  
-  | ...   | Low Medium Risk    | |  
-  | 0     | Low Risk     | - No significant activity detected<br>- Only default programs running (e.g., Windows defaults, Office, Notepad, Microsoft 365, Google Chrome, common apps) |     
+  | Score | Risk Level      | Criteria                                                                                              |  
+  |-------|-----------------|------------------------------------------------------------------------------------------------------|  
+  | 10    | Critical        | - Secret information is fully visible (complete password, API key, token, connection string)<br>- Keys, passwords, or secrets accessed, copied or exfiltrated |  
+  | 9     | Very High       | - Credentials or personal data being typed, pasted or transferred to an external destination |  
+  | 8     | High            | - Sensitive documents or databases opened with bulk export, upload or sharing visible |  
+  | 7     | Elevated        | - Privilege escalation, security tooling disabled, or access-control settings modified |  
+  | 6     | Medium High     | - Production systems or cloud consoles being reconfigured; sensitive files browsed |  
+  | 5     | Medium          | - Installing unknown programs or running unrecognized CLI/code/scripts<br>- Logging into another system or server |  
+  | 4     | Low Medium      | - Administrative tools or terminals used with no sensitive data visible |  
+  | 3     | Low Medium      | - Work-related browsing or code editing that touches internal resources |  
+  | 2     | Low             | - Ordinary work activity with partial or non-sensitive identifiers (e.g. a truncated email in a tab title) |  
+  | 1     | Very Low        | - Default programs with minor, non-sensitive activity |  
+  | 0     | None            | - No significant activity detected<br>- Only default programs running (e.g., Windows defaults, Office, Notepad, Microsoft 365, Google Chrome, common apps) |     
+
+  Scoring rules: score only what is visible in the frame. Partial or truncated identifiers are not secrets. Do not default to 10; reserve 9-10 for confirmed secrets or exfiltration.
+  `security_risk_score` is a single integer 0-10 equal to the highest `risk_level` among the confirmed observations.
     
   # Content Analysis
 
@@ -59,7 +68,7 @@ image_analyzer_prompt: |
     "summary": "High-level summary of the video content, including key events and activities observed.",
     "manual_review": "Yes/No",
     "manual_review_reason": "Reason for manual review status.",
-    "security_risk_score": "Overall security risk analysis, including any sensitive information or high-risk activities.",
+    "security_risk_score": 0,
     "analysis_results": {
       "key_observations" : [
         {

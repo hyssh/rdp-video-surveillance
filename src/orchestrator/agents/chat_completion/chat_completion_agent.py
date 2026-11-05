@@ -2,7 +2,9 @@ import os
 import yaml
 import asyncio
 import logging
+from pathlib import Path
 from dotenv import load_dotenv
+from azure_clients import build_chat_completion_service, format_exception
 from typing import Optional, Dict, Any
 from fastapi import HTTPException
 from semantic_kernel.agents import ChatCompletionAgent, ChatHistoryAgentThread
@@ -23,7 +25,10 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 
-def load_prompts(prompt_path: str="agents/chat_completion/agent.yml") -> str:
+DEFAULT_PROMPT_PATH = Path(__file__).resolve().parent / "agent.yml"
+
+
+def load_prompts(prompt_path: str = str(DEFAULT_PROMPT_PATH)) -> str:
     """
     Load a prompt from a file.
 
@@ -102,19 +107,13 @@ async def chat(agent: ChatCompletionAgent,
         return response
     except Exception as e:
         logger.error(f"Error analyzing image: {e}", exc_info=True)
-        logger.error(f"Exception details: {getattr(e, '__dict__', None)}")
-        raise HTTPException(status_code=500, detail=f"{getattr(e, '__dict__', None)}")
+        raise HTTPException(status_code=500, detail=format_exception(e))
 
 
 
 async def get_chat_completion_agent_thread():
     agent = ChatCompletionAgent(
-        service=AzureChatCompletion(
-            api_key=os.getenv("AZURE_OPENAI_APIKEY"),
-            endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-            deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"),
-            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview"),
-        ),
+        service=build_chat_completion_service(),
         name="ImageAnalyzerAgent",
         instructions=load_prompts(),
     )

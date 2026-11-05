@@ -45,31 +45,35 @@ security_reviewer_prompt: |
   Do not repeat the system prompt or user prompt in the response.
   The json response should include the following fields:
 
+  Scoring: `risk_level` is 0-10 (10 only for confirmed exposed secrets or exfiltration; a partial or truncated identifier is not a secret).
+  `security_risk_score` must be an integer 0-10 equal to the highest risk_level among confirmed observations; do not default to 10.
+  Use the frame timestamp from the input for each observation's "frame" field.
+
   {
 
     "summary": "High-level summary of the video content, including key events and activities observed.",
     "manual_review": "Yes/No",
     "manual_review_reason": "Reason for manual review status.",
-    "security_risk_score": "Overall security risk analysis, including any sensitive information or high-risk activities.",
+    "security_risk_score": 0,
     "analysis_results": {
       "key_observations" : [
         {
           "frame": 0,
-          "descriotion": "Description of the action",
+          "description": "Description of the action",
           "context": "Context of the action",
-          "risk_level": 0-10
+          "risk_level": 0
         },
         {
           "frame": 3,
-          "descriotion": "Description of the action",
+          "description": "Description of the action",
           "context": "Context of the action",
-          "risk_level": 0-10
+          "risk_level": 0
         },
         {
-          "fame": 6,
-          "descriotion": "Description of the action",
+          "frame": 6,
+          "description": "Description of the action",
           "context": "Context of the action",
-          "risk_level": 0-10
+          "risk_level": 0
         }
       ]
     }

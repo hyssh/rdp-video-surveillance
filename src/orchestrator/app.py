@@ -8,13 +8,14 @@ import requests
 from typing import Dict, Any, Optional
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from dotenv import load_dotenv
-from azure.storage.blob import BlobServiceClient, ContentSettings
+from azure.storage.blob import ContentSettings
+from azure_clients import (
+    build_embedding_service, embedding_settings, format_exception, get_blob_service_client, get_embedding_dimensions,
+)
 from postgresql import insert_video, insert_frames, update_frame_with_embedding, get_frames_by_video_id, get_video_by_id, update_video_with_security_review
 # from agents.image_analyzer.image_analyzer_agent import get_image_analyzer_agent, image_analyzer_agent_run
 from agents.security_reviewer.security_reviewer_agent import get_or_create_chat_completion_agent, security_reviewer_agent_run
 from agents.chat_completion.chat_completion_agent import get_chat_completion_agent_thread, chat_completion_agent_run
-from semantic_kernel.connectors.ai.open_ai.settings.azure_open_ai_settings import AzureOpenAISettings
-from semantic_kernel.connectors.ai.open_ai import AzureTextEmbedding
 
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
@@ -23,15 +24,10 @@ load_dotenv()
 
 orchestrator = FastAPI()
 
-AzureOpenAISettings(
-    embedding_deployment_name=os.getenv("AZURE_AI_AGENT_EMBEDDING_MODEL_DEPLOYMENT_NAME", "text-embedding-ada-002"),
-    text_deployment_name=os.getenv("AZURE_AI_AGENT_CHAT_MODEL_DEPLOYMENT_NAME", "gpt-4.1"),
-    chat_deployment_name=os.getenv("AZURE_AI_AGENT_CHAT_MODEL_DEPLOYMENT_NAME", "gpt-4.1"),
-    api_key=os.getenv("AZURE_OPENAI_APIKEY"),
-    endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    api_version=os.getenv("AZURE_TEXT_EMBEDDING_API_VERSION", "2024-12-01-preview"),
-)
-        
+
+def omniparser_base_url() -> str:
+    return f"http://{os.getenv('OMNIPARSER_HOST', '127.0.0.1')}:{os.getenv('OMNIPARSER_PORT', '8081')}"
+
 
 @orchestrator.get("/")
 def read_root():
@@ -42,10 +38,9 @@ async def healthcheck():
     """
     Call the Omniparser API with a base64 encoded image
     """
-    omniparser_url = f"http://{os.getenv("OMNIPARSER_HOST")}:{os.getenv("OMNIPARSER_PORT")}/test_result_image/"
+    omniparser_url = f"{omniparser_base_url()}/test_result_image/"
     
-    # Send the base64 image to the Florence API
-    response = requests.get(omniparser_url)
+    response = requests.get(omniparser_url, timeout=120)
     if response.status_code == 200:        
         return {"message":"Orchestrator API and Omniparser API are running successfully"}
     else:
@@ -66,13 +61,7 @@ async def upload_to_blob_storage(file: UploadFile, container_name: str, blob_nam
         dict: Information about the uploaded blob
     """
     try:
-        # Get connection string from environment variables
-        connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
-        if not connection_string:
-            raise HTTPException(status_code=500, detail="Azure Storage connection string not configured or missing")
-            
-        # Create the BlobServiceClient
-        blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+        blob_service_client = get_blob_service_client()
         
         # Get a reference to the container
         container_client = blob_service_client.get_container_client(container_name)
@@ -117,8 +106,10 @@ async def upload_to_blob_storage(file: UploadFile, container_name: str, blob_nam
             "url": blob_client.url
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload file: {format_exception(e)}")
 
 
 async def upload_file_endpoint(file: UploadFile = File(...), container_name: str = "videos"):
@@ -154,18 +145,19 @@ async def store_video_frame_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]
             "frames": frames_result
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to store metadata: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to store metadata: {format_exception(e)}")
 
 
 async def call_omniparser(base64_image: str) -> Dict[str, Any]:
     """
     Call the Omniparser API with a base64 encoded image
     """
-    omniparser_url = f"http://{os.getenv("OMNIPARSER_HOST")}:{os.getenv("OMNIPARSER_PORT")}/parse/"
+    omniparser_url = f"{omniparser_base_url()}/parse/"
     
-    # Send the base64 image to the Florence API
-    response = requests.post(omniparser_url, json={"base64_image": base64_image})
+    response = requests.post(omniparser_url, json={"base64_image": base64_image}, timeout=300)
     if response.status_code == 200:
         json_response = response.json()
         for item in json_response['parsed_content_list']:
@@ -181,21 +173,18 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
     Process images with Azure AI and update embeddings in the database.
     Using ChatCompletion Agent for image analysis.
     """
-    blob_service_client = BlobServiceClient.from_connection_string(os.getenv("AZURE_STORAGE_CONNECTION_STRING", ""))
+    blob_service_client = get_blob_service_client()
+    expected_dimensions = get_embedding_dimensions()
 
     logging.info(f"Updating image review and text vector for video ID: {preprocess_result['video_id']}")    
     review_images = get_frames_by_video_id(preprocess_result['video_id'])
     logging.info(f"Found {len(review_images)} frames for video ID {preprocess_result['video_id']}")
 
     if os.getenv("CHAT_COMPLETION_ENABLE", "true").lower() == "true":     
-        azuretxtembedding = AzureTextEmbedding(
-            service_id="azure-text-embedding",
-            api_key=os.getenv("AZURE_TEXT_EMBEDDING_APIKEY"),
-            endpoint=os.getenv("AZURE_TEXT_EMBEDDING_ENDPOINT"),
-            deployment_name=os.getenv("AZURE_AI_AGENT_EMBEDDING_MODEL_DEPLOYMENT_NAME")
-            )
+        azuretxtembedding = build_embedding_service()
+        embedding_exec_settings = embedding_settings()
         
-        logging.info(f"Using Azure Text Embedding with deployment name: {azuretxtembedding}")
+        logging.info(f"Using Azure Text Embedding service: {azuretxtembedding.ai_model_id}")
         
         chat_completion_agent, chat_completion_agent_thread = await get_chat_completion_agent_thread()
 
@@ -258,17 +247,28 @@ async def update_image_review_and_textvector_v2(preprocess_result: Dict[str, Any
                     logging.info(f"Image analysis result: {image_analysis_result_by_chatcompletionagent}")
 
                 # Update the frame with the description and embedding
-                embedding_vector = await azuretxtembedding.generate_embeddings([str(image_analysis_result_by_chatcompletionagent)])
-                logging.info(f"Generated embedding vector for image {image['id']}: {embedding_vector}")
-                if update_frame_with_embedding(image["id"], str(image_analysis_result_by_chatcompletionagent), embedding_vector[0].tolist()):
+                embedding_vector = await azuretxtembedding.generate_embeddings(
+                    [str(image_analysis_result_by_chatcompletionagent)], settings=embedding_exec_settings
+                )
+                vector = embedding_vector[0].tolist()
+                if len(vector) != expected_dimensions:
+                    raise ValueError(
+                        f"Embedding has {len(vector)} dimensions but EMBEDDING_DIMENSIONS={expected_dimensions}; "
+                        "align the embedding model, EMBEDDING_DIMENSIONS and the database vector column"
+                    )
+                logging.info(f"Generated {len(vector)}-dimension embedding for image {image['id']}")
+                if update_frame_with_embedding(image["id"], str(image_analysis_result_by_chatcompletionagent), vector):
                     logging.info(f"Updated frame {image['id']} with description and embedding")
                 else:
                     logging.error(f"Failed to update frame {image['id']} with description and embedding")
                     raise HTTPException(status_code=500, detail=f"Failed to update frame {image['id']} with description and embedding")
                 
+            except HTTPException as e:
+                logging.error(f"Failed to analyze image {image.get('url')}: {e.detail}")
+                raise
             except Exception as e:
-                logging.error(f"Failed to analyze image {image.get('url')}: {str(e)}")
-                raise HTTPException(status_code=500, detail=f"{str(e)}")
+                logging.error(f"Failed to analyze image {image.get('url')}: {format_exception(e)}")
+                raise HTTPException(status_code=500, detail=format_exception(e))
             
         logging.info("Chat history agent thread completed successfully")
         logging.info(f"chat history agent in thread : {chat_completion_agent_thread}")
@@ -351,9 +351,11 @@ async def update_video_review_and_text(preprocess_result: Dict[str, Any]):
             return preprocess_result
         else:
             raise HTTPException(status_code=500, detail="ChatCompletion agent is not enabled. Please check your environment variables.")
+    except HTTPException:
+        raise
     except Exception as e:
-        logging.error(f"Error in update_video_review_and_text: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to process security review: {str(e)}")
+        logging.error(f"Error in update_video_review_and_text: {format_exception(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to process security review: {format_exception(e)}")
     
 
 
@@ -381,7 +383,6 @@ async def ingest_video_v2(file: UploadFile = File(...), container_name: str = Fo
         # Split the video into frames
         frame_paths = split_video(
             video_path=temp_filename, 
-            blob_conn_str=os.getenv("AZURE_STORAGE_CONNECTION_STRING","MISSING"),
             output_dir=frames_container,
             # interval=3
         )
@@ -443,17 +444,18 @@ async def ingest_video_v2(file: UploadFile = File(...), container_name: str = Fo
                 except:
                     pass
                     
-        raise HTTPException(status_code=500, detail=f"Failed to process video: {str(e)}")
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=500, detail=f"Failed to process video: {format_exception(e)}")
     
 
 
-def split_video(video_path: str, blob_conn_str: str, output_dir: str=r"preprocess", interval=3):
+def split_video(video_path: str, output_dir: str=r"preprocess", interval=3):
     """
     Split a video into frames and upload directly to Azure Blob Storage.
     
     Args:
         video_path (str): Path to the input video file.
-        blob_conn_str (str): Azure Blob Storage connection string.
         output_dir (str): Container name for the output frames.
         interval (int): Interval in seconds to split the video.
         
@@ -461,7 +463,8 @@ def split_video(video_path: str, blob_conn_str: str, output_dir: str=r"preproces
         list: List of paths to the saved frames.
     """
     frame_blob_paths = []
-    
+    cap = None
+
     try:
         # Check if the video file exists
         if not os.path.isfile(video_path):
@@ -474,8 +477,7 @@ def split_video(video_path: str, blob_conn_str: str, output_dir: str=r"preproces
         # Get video file name without extension
         video_name = os.path.splitext(os.path.basename(video_path))[0]
 
-        # Initialize Azure Blob Storage client
-        blob_service_client = BlobServiceClient.from_connection_string(blob_conn_str)
+        blob_service_client = get_blob_service_client()
         container_client = blob_service_client.get_container_client(output_dir)
         
         # Create container if it doesn't exist
@@ -492,7 +494,7 @@ def split_video(video_path: str, blob_conn_str: str, output_dir: str=r"preproces
         if fps <= 0:
             raise ValueError(f"Invalid frame rate: {fps}")
             
-        frame_interval = int(fps * interval)
+        frame_interval = max(1, int(fps * interval))
 
         frame_count = 0
         while True:
@@ -552,14 +554,13 @@ def split_video(video_path: str, blob_conn_str: str, output_dir: str=r"preproces
         return frame_blob_paths
 
     except Exception as e:
-        print(f"Error processing video: {str(e)}")
-        # Return any frames that were successfully processed
-        return frame_blob_paths
+        # Fail loudly: returning a partial/empty list hides storage or decoding errors
+        logging.error(f"Error processing video: {format_exception(e)}")
+        raise
         
     finally:
-        # Ensure resources are released
-        # if 'cap' in locals() and cap is not None:
-        #     cap.release()
+        if cap is not None:
+            cap.release()
         gc.collect()
 
 

@@ -7,8 +7,9 @@ import os
 import yaml
 import asyncio
 import logging
+from pathlib import Path
 from dotenv import load_dotenv
-from azure.identity.aio import DefaultAzureCredential
+from azure_clients import build_chat_completion_service, format_exception
 from typing import List, Optional, Union, Tuple, Dict, Any
 from semantic_kernel.agents import ChatCompletionAgent, ChatHistoryAgentThread
 from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion
@@ -25,7 +26,10 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 
-def load_prompts(prompt_path: str="agents/security_reviewer/agent.yml") -> str:
+DEFAULT_PROMPT_PATH = Path(__file__).resolve().parent / "agent.yml"
+
+
+def load_prompts(prompt_path: str = str(DEFAULT_PROMPT_PATH)) -> str:
     """
     Load a prompt from a file.
 
@@ -56,12 +60,7 @@ async def get_or_create_chat_completion_agent() -> ChatCompletionAgent:
         logger.info("Creating new security reviewer agent")
     
         agent = ChatCompletionAgent(
-            service=AzureChatCompletion(                
-                api_key=os.getenv("AZURE_OPENAI_APIKEY"),
-                endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-                deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"),
-                api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
-            ),
+            service=build_chat_completion_service(),
             name="security_image_analyzer_agent",
             instructions=load_prompts(),  # Load the prompt from YAML
         )
@@ -91,7 +90,7 @@ async def security_reviewer_agent_run(agent: ChatCompletionAgent,
     
     # Verify agent type with proper error handling
     if not isinstance(agent, ChatCompletionAgent):
-        raise TypeError(f"agent must be an instance of AzureAIAgent, got {type(agent).__name__}")
+        raise TypeError(f"agent must be an instance of ChatCompletionAgent, got {type(agent).__name__}")
     
     if image_analysis_results is not None:
         # Format the image analysis results for the agent
@@ -113,10 +112,8 @@ async def security_reviewer_agent_run(agent: ChatCompletionAgent,
         return response
     except Exception as e:
         # Improved error handling with more detailed diagnostics
-        logger.error(f"Error running security reviewer agent: {e}\n")
-        
-        # Re-raise for proper error propagation
-        raise ValueError(f"Failed to run security reviewer agent: {e}")
+        logger.error(f"Error running security reviewer agent: {format_exception(e)}")
+        raise ValueError(f"Failed to run security reviewer agent: {format_exception(e)}") from e
     
 # async def get_or_create_ai_agent() -> AzureAIAgent:
 #     """Get existing agent or create a new one"""

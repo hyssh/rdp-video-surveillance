@@ -2,6 +2,7 @@ import os
 import yaml
 import asyncio
 import logging
+from pathlib import Path
 from dotenv import load_dotenv
 from typing import Optional, Dict, Any
 from azure.identity.aio import DefaultAzureCredential
@@ -19,7 +20,10 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 
-def load_prompts(self, prompt_path: str="agents/image_analyzer/agent.yml") -> str:
+DEFAULT_PROMPT_PATH = Path(__file__).resolve().parent / "agent.yml"
+
+
+def load_prompts(prompt_path: str = str(DEFAULT_PROMPT_PATH)) -> str:
     """
     Load a prompt from a file.
 
